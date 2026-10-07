@@ -542,7 +542,7 @@ class GrokClient:
             "7. OPENSTREETMAP / SPATIAL DATA TIPS:\n"
             "   - When querying tables like 'osm_points', 'osm_lines', 'osm_multipolygons', the data is ALREADY scoped to the user's local area. Do NOT invent artificial boundary subqueries like 'WITH boundary AS (SELECT ... LIMIT 1)' unless explicitly requested by the user.\n"
             "   - Search flexibly using both 'name ILIKE %keyword%' and 'other_tags ILIKE %keyword%' (e.g. for airport: name ILIKE '%airport%' OR other_tags ILIKE '%aeroway%').\n"
-            "   - For acronyms or abbreviations (e.g. 'DBMS', 'NIT'), match flexibly with dots or wildcards (e.g. name ILIKE '%DBMS%' OR name ILIKE '%D.B.M.S.%' OR name ILIKE '%D%B%M%S%'). When matching phrases like 'X school', separate keywords with wildcards (e.g. '%DBMS%school%' or '(name ILIKE %DBMS% AND name ILIKE %school%)') so intermediate words do not cause 0 results.\n"
+            "   - For acronyms or abbreviations (e.g. 'DBMS', 'NIT', 'TMH'), match flexibly with dots, wildcards, and common expansions (e.g. for 'TMH': name ILIKE '%TMH%' OR name ILIKE '%Tata Main Hospital%'; for 'DBMS': name ILIKE '%DBMS%' OR name ILIKE '%D.B.M.S.%' OR name ILIKE '%D%B%M%S%'). When matching phrases like 'X school', separate keywords with wildcards (e.g. '%DBMS%school%' or '(name ILIKE %DBMS% AND name ILIKE %school%)') so intermediate words do not cause 0 results.\n"
         )
 
         user_content = f"DATABASE SCHEMA:\n{schema}\n\nCONVERSATION HISTORY:\n{memory_context}\n\nUSER QUESTION:\n{question}\n"
