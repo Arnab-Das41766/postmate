@@ -1,0 +1,27 @@
+# Environment & Sensitive Credentials
+.env
+config.json
+
+# Generated Outputs
+map.html
+*.log
+
+# Large Spatial Datasets
+*.gpkg
+*.shp
+*.cpg
+*.dbf
+*.prj
+*.shx
+*.geojson
+!input_data/README.txt
+
+# Python & System Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+Thumbs.db

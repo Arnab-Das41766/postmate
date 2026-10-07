@@ -1,0 +1,23 @@
+{
+  "default_connection": "local",
+  "connections": {
+    "local": {
+      "host": "localhost",
+      "port": 5432,
+      "database": "gis_db",
+      "user": "postgres",
+      "password": "your_password_here"
+    },
+    "staging": {
+      "host": "staging-db.internal",
+      "port": 5432,
+      "database": "geodb",
+      "user": "gis_reader",
+      "password": "staging_password"
+    }
+  },
+  "grok": {
+    "model": "grok-2-latest",
+    "temperature": 0.1
+  }
+}

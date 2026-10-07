@@ -1,0 +1,9 @@
+psycopg2-binary>=2.9.9
+requests>=2.31.0
+python-dotenv>=1.0.0
+rich>=13.7.0
+folium>=0.16.0
+shapely>=2.0.0
+geopandas>=1.0.0
+SQLAlchemy>=2.0.0
+geoalchemy2>=0.15.0

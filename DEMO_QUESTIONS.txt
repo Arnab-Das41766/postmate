@@ -1,0 +1,126 @@
+================================================================================
+                    POSTMATE LIVE PRESENTATION CHEATSHEET
+                Copy-Paste Questions & Live Demo Script
+================================================================================
+
+TIPS FOR PRESENTING:
+- Keep two windows side-by-side:
+    Left Window:  Your Terminal running `python postmate.py`
+    Right Window: Your Browser showing `map.html`
+- After each spatial query, click the blue "Refresh Map" button in the browser!
+- Type `reset` in Postmate if you want to clear conversation history.
+
+--------------------------------------------------------------------------------
+PART 1: DISCOVERING PLACES (Pins on the Map)
+Demonstrates: Natural Language to SQL, PostGIS Geometry conversion, Leaflet Map
+--------------------------------------------------------------------------------
+
+[Question 1 - Hospitals]
+Show all hospitals in osm_points
+
+  * Presenter Note: Shows 25 hospitals in Jamshedpur (Tata Main Hospital,
+    Loyola Clinic, Tinplate Hospital). Refresh map.html to show pins!
+
+[Question 2 - Schools & Flexible Acronym Matching]
+Highlight dbms school
+
+  * Presenter Note: Highlights D.B.M.S. Kadma High School. Demonstrates
+    how Postmate intelligently handles acronyms and periods.
+
+[Question 3 - Banks & Financial Services]
+Find all banks in osm_points
+
+--------------------------------------------------------------------------------
+PART 2: POLYGONS, PARKS & INFRASTRUCTURE (Area Highlights)
+Demonstrates: PostGIS MultiPolygon handling, complex geometry rendering
+--------------------------------------------------------------------------------
+
+[Question 4 - Sonari Airport]
+Show the airport in osm_multipolygons
+
+  * Presenter Note: Renders the complete airport layout—runways, apron,
+    hangars, and helipads.
+
+[Question 5 - Lakes & Reservoirs]
+Show all lakes and water bodies in osm_multipolygons
+
+  * Presenter Note: Highlights Dimna Reservoir, Beldih Lake, Jayanti Sarovar,
+    and Hudco Lake.
+
+[Question 6 - Jubilee Park]
+Highlight Jubilee Park in the map
+
+--------------------------------------------------------------------------------
+PART 3: SPATIAL PROXIMITY & CALCULATIONS (PostGIS ST_DWithin & ST_Distance)
+Demonstrates: Advanced PostGIS spatial joins and distance filtering
+--------------------------------------------------------------------------------
+
+[Question 7 - Proximity Buffer Search]
+Which schools are within 2km of Tata Main Hospital?
+
+  * Presenter Note: Postmate uses PostGIS `ST_DWithin` and `ST_Transform` to
+    measure geographical distances between different tables.
+
+[Question 8 - Distance to Airport]
+Which banks are within 1.5km of Jamshedpur Airport?
+
+[Question 9 - Infrastructure Analytics]
+Calculate the total length in kilometers of primary roads in osm_lines
+
+  * Presenter Note: Aggregates LineString geometries into real-world kilometers.
+
+--------------------------------------------------------------------------------
+PART 4: ROLLING CONVERSATIONAL MEMORY (Multi-turn Follow-ups)
+Demonstrates: In-memory context retention without re-typing queries
+--------------------------------------------------------------------------------
+
+Step 1: Ask initial question:
+Find all schools in osm_points
+
+Step 2: Ask follow-up without repeating "schools":
+now only show the ones with High School in the name
+
+Step 3: Ask second follow-up:
+order them by name ascending
+
+  * Presenter Note: Emphasize to the audience: "Notice I never had to re-type
+    the table or base question—Postmate maintains rolling memory!"
+
+--------------------------------------------------------------------------------
+PART 5: THE 4-TIER CRITICALITY SAFETY SYSTEM (Risk Interception)
+Demonstrates: Autonomous safety rules, prompt confirmations, risk explanation
+--------------------------------------------------------------------------------
+
+[Demo Tier 3: CRITICAL (Requires 'yes' / 'no')]
+Add a new clinic called City Health Clinic at point 86.20, 22.80
+
+  * What happens: Postmate prints the SQL with a yellow [CRITICAL] badge
+    and pauses for a `yes/no` confirmation before writing data.
+  * Action: Type `no` to show safe cancellation.
+
+[Demo Tier 4: VERY CRITICAL (Requires typing 'CONFIRM')]
+Delete all records from osm_points
+
+  * What happens: Postmate intercepts the query with a red [VERY CRITICAL]
+    badge, displays a plain English risk explanation (deletes all rows),
+    and strictly demands typing `CONFIRM` to execute.
+  * Action: Press Enter or type `cancel` to show that accidental execution
+    is impossible!
+
+--------------------------------------------------------------------------------
+PART 6: BUILT-IN COMMANDS
+Demonstrates: Tooling and schema introspection
+--------------------------------------------------------------------------------
+
+schema
+  * Shows the live auto-discovered PostgreSQL & PostGIS tables and SRIDs.
+
+history
+  * Shows current in-memory rolling turns.
+
+reset
+  * Resets conversation memory for a clean slate.
+
+================================================================================
+                      END OF PRESENTATION SCRIPT
+================================================================================
