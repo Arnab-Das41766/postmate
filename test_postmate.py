@@ -148,6 +148,33 @@ class TestMapVisualizer(unittest.TestCase):
             # Verify property presence
             self.assertIn("Central Park", content)
 
+    def test_generate_map_from_coordinate_columns(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_map_path = os.path.join(tmpdir, "map.html")
+            rows = [
+                {"name": "TMH Hospital", "latitude": 22.8015, "longitude": 86.1829}
+            ]
+            generated = MapVisualizer.generate_map(rows, {}, output_path=test_map_path)
+            self.assertTrue(generated)
+            self.assertTrue(os.path.isfile(test_map_path))
+            with open(test_map_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn("TMH Hospital", content)
+            self.assertIn("postmate-autosync", content)
+
+    def test_generate_map_from_wkt(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_map_path = os.path.join(tmpdir, "map.html")
+            rows = [
+                {"name": "Beldih Club", "location": "POINT(86.185 22.798)"}
+            ]
+            generated = MapVisualizer.generate_map(rows, {}, output_path=test_map_path)
+            self.assertTrue(generated)
+            self.assertTrue(os.path.isfile(test_map_path))
+            with open(test_map_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn("Beldih Club", content)
+
     def test_no_geometry_skips_map(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_map_path = os.path.join(tmpdir, "map.html")

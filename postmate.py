@@ -531,7 +531,7 @@ class GrokClient:
             "CRITICAL INSTRUCTIONS:\n"
             "1. You only output valid PostgreSQL/PostGIS SQL.\n"
             "2. Be PostGIS aware: utilize spatial functions (e.g., ST_DWithin, ST_Intersects, ST_Contains, ST_Distance, ST_Transform, ST_Area) where appropriate.\n"
-            "3. If spatial columns exist and geometry is selected or relevant for visualization, automatically include a GeoJSON conversion in WGS84 (SRID 4326) as an aliased column '__geojson__', for example: ST_AsGeoJSON(ST_Transform(<geom_column>, 4326)) AS __geojson__ alongside other requested attributes.\n"
+            "3. ALWAYS INCLUDE SPATIAL GEOJSON: Whenever querying ANY table with a geometry or geography column, ALWAYS include `ST_AsGeoJSON(ST_Transform(<geom_column>, 4326)) AS __geojson__` in your SELECT list alongside the requested attributes—INCLUDING when the user asks for coordinates, latitude/longitude, locations, or points! Even if the user asks for 'coordinates of X' or 'what is the lat/lon of X', include both the requested coordinate numbers AND the `__geojson__` column so that the interactive map visualizer can always display the feature.\n"
             "4. Propose a criticality tier from exactly one of: 'neutral', 'normal', 'critical', 'very critical'.\n"
             "   - 'neutral': Plain SELECT, EXPLAIN, SHOW queries that read data.\n"
             "   - 'normal': Non-destructive utility operations.\n"
@@ -684,6 +684,56 @@ class MapVisualizer:
                         except Exception:
                             pass
 
+            # 3. Check for WKT strings (e.g. POINT(86.2 22.8), POLYGON(...))
+            if not geojson_str and wkt is not None:
+                for k, v in row.items():
+                    if isinstance(v, str) and re.match(r"^\s*(POINT|POLYGON|LINESTRING|MULTIPOINT|MULTIPOLYGON|MULTILINESTRING|GEOMETRYCOLLECTION)\b", v, re.IGNORECASE):
+                        try:
+                            geom_obj = wkt.loads(v)
+                            geojson_str = json.dumps(mapping(geom_obj))
+                            break
+                        except Exception:
+                            pass
+
+            # 4. Check for coordinate columns (latitude/longitude, lat/lon, x/y, st_x/st_y)
+            if not geojson_str:
+                lower_keys = {k.lower(): (k, v) for k, v in row.items()}
+                lon_val = None
+                lat_val = None
+
+                for l_candidate in ["longitude", "lon", "lng", "st_x", "x", "long"]:
+                    if l_candidate in lower_keys:
+                        val = lower_keys[l_candidate][1]
+                        if isinstance(val, (int, float)):
+                            lon_val = float(val)
+                            break
+                        elif isinstance(val, str) and val.strip().replace(".", "", 1).replace("-", "", 1).isdigit():
+                            try:
+                                lon_val = float(val.strip())
+                                break
+                            except Exception:
+                                pass
+
+                for l_candidate in ["latitude", "lat", "st_y", "y"]:
+                    if l_candidate in lower_keys:
+                        val = lower_keys[l_candidate][1]
+                        if isinstance(val, (int, float)):
+                            lat_val = float(val)
+                            break
+                        elif isinstance(val, str) and val.strip().replace(".", "", 1).replace("-", "", 1).isdigit():
+                            try:
+                                lat_val = float(val.strip())
+                                break
+                            except Exception:
+                                pass
+
+                if lon_val is not None and lat_val is not None:
+                    if -180.0 <= lon_val <= 180.0 and -90.0 <= lat_val <= 90.0:
+                        geojson_str = json.dumps({
+                            "type": "Point",
+                            "coordinates": [lon_val, lat_val]
+                        })
+
             if geojson_str:
                 try:
                     if isinstance(geojson_str, str):
@@ -763,7 +813,7 @@ class MapVisualizer:
             min_lon, max_lon = min(lons), max(lons)
             m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
 
-        # Add manual refresh button in the top-right corner
+        # Add manual refresh button + auto-sync checkbox in the top-right corner
         refresh_html = """
         <div style="
             position: fixed; 
@@ -789,13 +839,51 @@ class MapVisualizer:
                 align-items: center;
                 gap: 6px;
                 font-weight: 500;
+                width: 100%;
+                justify-content: center;
             ">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
                 </svg>
                 Refresh Map
             </button>
+            <label style="
+                display: flex; 
+                align-items: center; 
+                gap: 6px; 
+                margin-top: 6px; 
+                font-size: 11px; 
+                font-weight: normal; 
+                color: #4b5563; 
+                cursor: pointer;
+                user-select: none;
+            ">
+                <input type="checkbox" id="postmate-autosync" onchange="togglePostmateSync(this.checked)" style="cursor: pointer;">
+                Auto-sync (2s)
+            </label>
         </div>
+        <script>
+            let postmateSyncTimer = null;
+            function togglePostmateSync(enabled) {
+                try { localStorage.setItem('postmate_autosync_enabled', enabled ? '1' : '0'); } catch(e){}
+                if (enabled) {
+                    if (!postmateSyncTimer) {
+                        postmateSyncTimer = setInterval(function() { window.location.reload(); }, 2000);
+                    }
+                } else {
+                    if (postmateSyncTimer) {
+                        clearInterval(postmateSyncTimer);
+                        postmateSyncTimer = null;
+                    }
+                }
+            }
+            try {
+                if (localStorage.getItem('postmate_autosync_enabled') === '1') {
+                    document.getElementById('postmate-autosync').checked = true;
+                    togglePostmateSync(true);
+                }
+            } catch(e) {}
+        </script>
         """
         if Element:
             m.get_root().html.add_child(Element(refresh_html))

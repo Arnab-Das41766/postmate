@@ -7,7 +7,8 @@ TIPS FOR PRESENTING:
 - Keep two windows side-by-side:
     Left Window:  Your Terminal running `python postmate.py`
     Right Window: Your Browser showing `map.html`
-- After each spatial query, click the blue "Refresh Map" button in the browser!
+- After each spatial query, click the blue "Refresh Map" button in the browser,
+  OR enable the "[x] Auto-sync (2s)" toggle in the top-right corner to refresh automatically!
 - Type `reset` in Postmate if you want to clear conversation history.
 
 --------------------------------------------------------------------------------
@@ -29,6 +30,12 @@ Highlight dbms school
 
 [Question 3 - Banks & Financial Services]
 Find all banks in osm_points
+
+[Question 3b - Coordinate Extraction & Auto-Mapping]
+give me the coordinates of Tata Main Hospital
+
+  * Presenter Note: Postmate extracts numeric lon/lat in the terminal AND
+    seamlessly renders the hospital pin on map.html at the exact location!
 
 --------------------------------------------------------------------------------
 PART 2: POLYGONS, PARKS & INFRASTRUCTURE (Area Highlights)
