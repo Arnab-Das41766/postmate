@@ -179,11 +179,16 @@ python postmate.py "Calculate the area of jamshedpur_boundary in square kilomete
 
 ## 🗺️ Spatial Map Visualization (`map.html`)
 
-Whenever a query retrieves spatial geometries:
-1. Postmate automatically writes the features to **`map.html`**.
+Whenever a query retrieves spatial geometries or coordinates:
+1. Postmate automatically writes and updates **`map.html`**.
 2. Open `map.html` in your web browser (`file:///.../map.html`).
-3. As you run new queries, click the floating **🔄 Refresh Map** button to see the new highlights instantly.
-4. Uses high-resolution, watermark-free **Esri World Street Map** tiles that work offline and locally with zero API key requirements.
+3. **Multi-Basemap Switcher (100% Free, No API Keys):** Use the top-right layer control to switch between:
+   - 🗺️ **Street Map** (Esri World Street Map)
+   - 🛰️ **Satellite Imagery** (Esri World Imagery)
+   - 🌙 **Dark Mode** (CARTO Dark Matter)
+   - 🏔️ **Topographic** (Esri World Topo Map)
+   - 🔘 **Toggle Query Features** overlay on/off
+4. **Auto-sync & Live Reload:** Check the **`[x] Auto-sync (2s)`** checkbox in the top-left toolbar to have the map automatically reload as you query in the terminal without clicking refresh!
 
 ---
 

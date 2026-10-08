@@ -147,6 +147,10 @@ class TestMapVisualizer(unittest.TestCase):
             self.assertIn("window.location.reload()", content)
             # Verify property presence
             self.assertIn("Central Park", content)
+            # Verify multi-basemap layer control
+            self.assertIn("Satellite Imagery (Esri)", content)
+            self.assertIn("Dark Mode (CartoDB)", content)
+            self.assertIn("Topographic (Esri)", content)
 
     def test_generate_map_from_coordinate_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -8,7 +8,8 @@ TIPS FOR PRESENTING:
     Left Window:  Your Terminal running `python postmate.py`
     Right Window: Your Browser showing `map.html`
 - After each spatial query, click the blue "Refresh Map" button in the browser,
-  OR enable the "[x] Auto-sync (2s)" toggle in the top-right corner to refresh automatically!
+  OR enable the "[x] Auto-sync (2s)" toggle in the top-left toolbar to refresh automatically!
+- Use the Layer Switcher icon in the top-right corner to toggle between Street Map, Satellite Imagery, Dark Mode, and Topographic maps!
 - Type `reset` in Postmate if you want to clear conversation history.
 
 --------------------------------------------------------------------------------

@@ -772,13 +772,41 @@ class MapVisualizer:
         else:
             m = folium.Map(location=[0, 0], zoom_start=2, tiles=None)
 
-        # Use Esri World Street Map tiles (100% free, NO API key required, zero watermarks)
+        # 1. Street Map (Default base layer)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
             attr="Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom",
-            name="World Street Map",
+            name="Street Map (Esri)",
             max_zoom=19,
-            control=False
+            control=True
+        ).add_to(m)
+
+        # 2. Satellite Imagery
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attr="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+            name="Satellite Imagery (Esri)",
+            max_zoom=19,
+            control=True
+        ).add_to(m)
+
+        # 3. Dark Mode
+        folium.TileLayer(
+            tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            subdomains="abcd",
+            attr="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>",
+            name="Dark Mode (CartoDB)",
+            max_zoom=20,
+            control=True
+        ).add_to(m)
+
+        # 4. Topographic Map
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
+            name="Topographic (Esri)",
+            max_zoom=19,
+            control=True
         ).add_to(m)
 
         geojson_layer = {
@@ -801,11 +829,14 @@ class MapVisualizer:
 
         folium.GeoJson(
             geojson_layer,
-            name="Current Query Result",
+            name="Query Features",
             style_function=style_fn,
             tooltip=tooltip,
             popup=folium.GeoJsonPopup(fields=fields[:8]) if fields else None
         ).add_to(m)
+
+        # Add multi-basemap layer switcher control
+        folium.LayerControl(position="topright", collapsed=True).add_to(m)
 
         # Fit bounds
         if bounds:
@@ -813,12 +844,12 @@ class MapVisualizer:
             min_lon, max_lon = min(lons), max(lons)
             m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
 
-        # Add manual refresh button + auto-sync checkbox in the top-right corner
+        # Add manual refresh button + auto-sync checkbox in the top-left toolbar
         refresh_html = """
         <div style="
             position: fixed; 
-            top: 15px; 
-            right: 15px; 
+            top: 12px; 
+            left: 55px; 
             z-index: 9999; 
             background: white; 
             padding: 8px 14px; 
