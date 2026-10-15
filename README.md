@@ -183,10 +183,11 @@ Whenever a query retrieves spatial geometries or coordinates:
 1. Postmate automatically writes and updates **`map.html`**.
 2. Open `map.html` in your web browser (`file:///.../map.html`).
 3. **Multi-Basemap Switcher (100% Free, No API Keys):** Use the top-right layer control to switch between:
-   - 🗺️ **Street Map** (Esri World Street Map)
-   - 🛰️ **Satellite Imagery** (Esri World Imagery)
-   - 🌙 **Dark Mode** (CARTO Dark Matter)
-   - 🏔️ **Topographic** (Esri World Topo Map)
+   - 🗺️ **Google Maps (Streets)** (Default, high-detail, never blocked)
+   - 🛰️ **Google Maps (Satellite)** & **Esri World Imagery**
+   - 🏛️ **Street Map (Esri)** & **Carto Positron (OSM Clean)**
+   - 🌙 **Dark Mode (CartoDB)**
+   - 🏔️ **Topographic (Esri)**
    - 🔘 **Toggle Query Features** overlay on/off
 4. **Auto-sync & Live Reload:** Check the **`[x] Auto-sync (2s)`** checkbox in the top-left toolbar to have the map automatically reload as you query in the terminal without clicking refresh!
 

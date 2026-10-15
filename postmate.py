@@ -540,9 +540,16 @@ class GrokClient:
             "5. If 'very critical' or 'critical', provide a concise plain English explanation in 'risk_explanation'.\n"
             "6. Output MUST be valid JSON with keys: 'sql', 'criticality', 'risk_explanation'. Do NOT wrap in markdown code blocks like ```json ... ```, just pure JSON.\n"
             "7. OPENSTREETMAP / SPATIAL DATA TIPS:\n"
-            "   - When querying tables like 'osm_points', 'osm_lines', 'osm_multipolygons', the data is ALREADY scoped to the user's local area. Do NOT invent artificial boundary subqueries like 'WITH boundary AS (SELECT ... LIMIT 1)' unless explicitly requested by the user.\n"
-            "   - Search flexibly using both 'name ILIKE %keyword%' and 'other_tags ILIKE %keyword%' (e.g. for airport: name ILIKE '%airport%' OR other_tags ILIKE '%aeroway%').\n"
-            "   - For acronyms or abbreviations (e.g. 'DBMS', 'NIT', 'TMH'), match flexibly with dots, wildcards, and common expansions (e.g. for 'TMH': name ILIKE '%TMH%' OR name ILIKE '%Tata Main Hospital%'; for 'DBMS': name ILIKE '%DBMS%' OR name ILIKE '%D.B.M.S.%' OR name ILIKE '%D%B%M%S%'). When matching phrases like 'X school', separate keywords with wildcards (e.g. '%DBMS%school%' or '(name ILIKE %DBMS% AND name ILIKE %school%)') so intermediate words do not cause 0 results.\n"
+            "   - SCOPE & TARGET TABLES:\n"
+            "     * Amenities, services, healthcare, and points of interest (doctors, clinics, hospitals, schools, colleges, banks, ATMs, pharmacies, cafes, restaurants): query 'osm_points' directly! Do NOT write multi-table UNION ALL across osm_lines and osm_multipolygons for amenities.\n"
+            "     * Parks, lakes, reservoirs, forests, airports, and large area boundaries: query 'osm_multipolygons'.\n"
+            "     * Roads, streets, rivers, and transit routes: query 'osm_lines'.\n"
+            "   - OSM TAG FORMAT & FLEXIBLE SEARCH:\n"
+            "     * In PostgreSQL, 'other_tags' is stored as HSTORE text: '\"key\"=>\"value\"'. NEVER use '=' like 'other_tags ILIKE %key=val%' (this will always fail!).\n"
+            "     * Instead, match keywords directly: e.g. for doctor/medical: (name ILIKE '%doctor%' OR name ILIKE '%dr.%' OR other_tags ILIKE '%doctor%' OR other_tags ILIKE '%clinic%').\n"
+            "     * Note OSM uses plural tags (e.g. 'amenity=>doctors', 'amenity=>pharmacy', 'amenity=>hospital'). Use open wildcards like '%doctor%' so both 'doctor' and 'doctors' match.\n"
+            "   - DATA IS LOCAL: Tables like 'osm_points' are ALREADY scoped to the user's city/area. Do NOT invent artificial boundary subqueries like 'WITH boundary AS (SELECT ... LIMIT 1)' unless explicitly requested.\n"
+            "   - ACRONYMS: For acronyms ('DBMS', 'TMH', 'NIT'), match flexibly (e.g. 'name ILIKE %DBMS% OR name ILIKE %D.B.M.S.%'). When matching 'X school', use '%DBMS%school%' so intermediate words don't cause 0 results.\n"
         )
 
         user_content = f"DATABASE SCHEMA:\n{schema}\n\nCONVERSATION HISTORY:\n{memory_context}\n\nUSER QUESTION:\n{question}\n"
@@ -772,41 +779,76 @@ class MapVisualizer:
         else:
             m = folium.Map(location=[0, 0], zoom_start=2, tiles=None)
 
-        # 1. Street Map (Default base layer)
+        # 1. Google Maps (Streets - ultra-fast, never blocked on file:///, full coverage)
         folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-            attr="Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom",
-            name="Street Map (Esri)",
-            max_zoom=19,
-            control=True
+            tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+            attr="&copy; Google Maps",
+            name="Google Maps (Streets)",
+            max_zoom=20,
+            control=True,
+            show=True
         ).add_to(m)
 
-        # 2. Satellite Imagery
+        # 2. Google Maps (Hybrid Satellite)
+        folium.TileLayer(
+            tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+            attr="&copy; Google Maps",
+            name="Google Maps (Satellite)",
+            max_zoom=20,
+            control=True,
+            show=False
+        ).add_to(m)
+
+        # 3. Satellite Imagery (Esri)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+            attr="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP",
             name="Satellite Imagery (Esri)",
             max_zoom=19,
-            control=True
+            control=True,
+            show=False
         ).add_to(m)
 
-        # 3. Dark Mode
+        # 4. Street Map (Esri)
         folium.TileLayer(
-            tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-            subdomains="abcd",
-            attr="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>",
-            name="Dark Mode (CartoDB)",
-            max_zoom=20,
-            control=True
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS",
+            name="Street Map (Esri)",
+            max_zoom=17,
+            control=True,
+            show=False
         ).add_to(m)
 
-        # 4. Topographic Map
+        # 5. Topographic (Esri)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-            attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
+            attr="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, USGS, NPS",
             name="Topographic (Esri)",
+            max_zoom=18,
+            control=True,
+            show=False
+        ).add_to(m)
+
+        # 6. Dark Mode (CartoDB)
+        folium.TileLayer(
+            tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            attr="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>",
+            name="Dark Mode (CartoDB)",
             max_zoom=19,
-            control=True
+            subdomains="abcd",
+            control=True,
+            show=False
+        ).add_to(m)
+
+        # 7. Carto Positron (Clean OSM Light Streets)
+        folium.TileLayer(
+            tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+            attr="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors &copy; <a href='https://carto.com/attributions'>CARTO</a>",
+            name="Carto Positron (OSM)",
+            max_zoom=19,
+            subdomains="abcd",
+            control=True,
+            show=False
         ).add_to(m)
 
         geojson_layer = {
@@ -838,11 +880,14 @@ class MapVisualizer:
         # Add multi-basemap layer switcher control
         folium.LayerControl(position="topright", collapsed=True).add_to(m)
 
-        # Fit bounds
+        # Fit bounds safely (avoiding extreme zoom where tile servers have no images)
         if bounds:
             min_lat, max_lat = min(lats), max(lats)
             min_lon, max_lon = min(lons), max(lons)
-            m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
+            if min_lat == max_lat and min_lon == max_lon:
+                m.fit_bounds([[min_lat - 0.008, min_lon - 0.008], [max_lat + 0.008, max_lon + 0.008]], max_zoom=15)
+            else:
+                m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]], max_zoom=16)
 
         # Add manual refresh button + auto-sync checkbox in the top-left toolbar
         refresh_html = """
