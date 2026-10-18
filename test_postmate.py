@@ -291,6 +291,86 @@ class TestExecutionAndRetry(unittest.TestCase):
         # Should call DB runner exactly twice (initial + 1 retry) and then stop
         self.assertEqual(postmate.db_runner.execute_query.call_count, 2)
 
+    def test_advanced_criticality_edge_cases(self):
+        # 1. Unconstrained CTE with DELETE
+        tier, _ = CriticalityEngine.evaluate_rules("WITH del AS (DELETE FROM parcels RETURNING *) SELECT * FROM del;")
+        self.assertEqual(tier, TIER_VERY_CRITICAL)
+
+        # 2. Constrained CTE with DELETE
+        tier, _ = CriticalityEngine.evaluate_rules("WITH del AS (DELETE FROM parcels WHERE id = 10 RETURNING *) SELECT * FROM del;")
+        self.assertEqual(tier, TIER_CRITICAL)
+
+        # 3. SELECT INTO table creation
+        tier, _ = CriticalityEngine.evaluate_rules("SELECT * INTO new_parcels FROM parcels;")
+        self.assertEqual(tier, TIER_CRITICAL)
+
+        # 4. String literal containing 'DROP' must remain NEUTRAL
+        tier, _ = CriticalityEngine.evaluate_rules("SELECT * FROM audit_logs WHERE action = 'DROP';")
+        self.assertEqual(tier, TIER_NEUTRAL)
+
+        # 5. Anonymous DO block executing destructive DDL
+        tier, _ = CriticalityEngine.evaluate_rules("DO $$ BEGIN DROP TABLE parcels; END $$;")
+        self.assertEqual(tier, TIER_VERY_CRITICAL)
+
+        # 6. Tautological WHERE clause in UPDATE
+        tier, _ = CriticalityEngine.evaluate_rules("UPDATE parcels SET owner = 'Hacker' WHERE 1=1;")
+        self.assertEqual(tier, TIER_VERY_CRITICAL)
+
+    @patch.object(ConfigManager, "load_config")
+    @patch.object(ConfigManager, "get_api_key", return_value=("test_key", "grok"))
+    def test_export_csv_and_geojson(self, mock_key, mock_cfg):
+        mock_cfg.return_value = ({"host": "localhost", "database": "testdb"}, {"model": "grok-2-latest"})
+        postmate = Postmate()
+        postmate.last_result = QueryResult(
+            rows=[
+                {"id": 1, "name": "Hospital A", "__geojson__": '{"type": "Point", "coordinates": [86.2, 22.8]}'},
+                {"id": 2, "name": "Hospital B", "__geojson__": '{"type": "Point", "coordinates": [86.3, 22.9]}'}
+            ],
+            column_names=["id", "name", "__geojson__"],
+            rowcount=2,
+            execution_time_ms=12.5
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = os.path.join(tmpdir, "test_out.csv")
+            geo_path = os.path.join(tmpdir, "test_out.geojson")
+
+            # Test CSV export
+            success_csv = postmate.export_results_csv(csv_path)
+            self.assertTrue(success_csv)
+            self.assertTrue(os.path.isfile(csv_path))
+            with open(csv_path, "r", encoding="utf-8") as f:
+                csv_content = f.read()
+            self.assertIn("Hospital A", csv_content)
+            self.assertNotIn("__geojson__", csv_content)  # __geojson__ excluded from tabular CSV
+
+            # Test GeoJSON export
+            success_geo = postmate.export_results_geojson(geo_path)
+            self.assertTrue(success_geo)
+            self.assertTrue(os.path.isfile(geo_path))
+            with open(geo_path, "r", encoding="utf-8") as f:
+                geo_data = json.load(f)
+            self.assertEqual(geo_data["type"], "FeatureCollection")
+            self.assertEqual(len(geo_data["features"]), 2)
+            self.assertEqual(geo_data["features"][0]["geometry"]["coordinates"], [86.2, 22.8])
+
+    @patch.object(ConfigManager, "load_config")
+    @patch.object(ConfigManager, "get_api_key", return_value=("test_key", "grok"))
+    def test_direct_sql_execution(self, mock_key, mock_cfg):
+        mock_cfg.return_value = ({"host": "localhost", "database": "testdb"}, {"model": "grok-2-latest"})
+        postmate = Postmate()
+        postmate.db_runner.execute_query = MagicMock(return_value=QueryResult(
+            rows=[{"count": 5}], column_names=["count"], rowcount=1, execution_time_ms=4.0
+        ))
+
+        # Direct SQL execution bypasses Grok LLM call completely
+        postmate.grok_client.generate_sql = MagicMock()
+        success = postmate.execute_sql_direct("SELECT count(*) FROM parcels;")
+        self.assertTrue(success)
+        self.assertEqual(postmate.db_runner.execute_query.call_count, 1)
+        self.assertEqual(postmate.grok_client.generate_sql.call_count, 0)
+        self.assertIsNotNone(postmate.last_result)
+
 
 if __name__ == "__main__":
     unittest.main()

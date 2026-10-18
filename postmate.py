@@ -367,13 +367,22 @@ class CriticalityEngine:
     """
 
     @staticmethod
-    def normalize_sql(sql_query: str) -> str:
-        """Removes comments and extraneous whitespace from SQL."""
-        # Strip block comments /* ... */
+    def strip_comments(sql_query: str) -> str:
+        """Removes comments from SQL."""
         no_block = re.sub(r"/\*.*?\*/", " ", sql_query, flags=re.DOTALL)
-        # Strip line comments -- ...
         no_line = re.sub(r"--[^\n]*", " ", no_block)
-        return " ".join(no_line.split())
+        return no_line
+
+    @staticmethod
+    def strip_string_literals(sql_query: str) -> str:
+        """Strips string literals to prevent keyword false positives."""
+        return re.sub(r"'(?:''|[^'])*'", "''", sql_query)
+
+    @classmethod
+    def normalize_sql(cls, sql_query: str) -> str:
+        """Removes comments and extraneous whitespace from SQL."""
+        no_comments = cls.strip_comments(sql_query)
+        return " ".join(no_comments.split())
 
     @classmethod
     def evaluate_rules(cls, sql_query: str) -> Tuple[str, str]:
@@ -383,53 +392,80 @@ class CriticalityEngine:
           - DROP, TRUNCATE, ALTER -> very critical
           - UPDATE or DELETE without WHERE -> very critical
           - UPDATE or DELETE with WHERE -> critical
-          - INSERT, CREATE, GRANT, REVOKE -> critical
-          - Plain SELECT, EXPLAIN, SHOW -> neutral
+          - INSERT, CREATE, GRANT, REVOKE, SELECT INTO -> critical
+          - Anonymous DO blocks with DDL/DML -> very critical / critical
+          - Pure SELECT, EXPLAIN, SHOW, DESCRIBE -> neutral
           - Other commands -> normal
         """
-        clean = cls.normalize_sql(sql_query).upper()
-        if not clean:
+        raw_clean = cls.strip_comments(sql_query).strip()
+        if not raw_clean:
             return TIER_NEUTRAL, "Empty query"
 
-        # Check for multiple statements separated by semicolon
-        statements = [s.strip() for s in re.split(r";\s*", clean) if s.strip()]
-        
+        # Strip literals for keyword classification to avoid false positives on 'DROP', 'ALTER', etc.
+        clean_no_literals = cls.strip_string_literals(raw_clean)
+        statements = [s.strip() for s in re.split(r";\s*", clean_no_literals) if s.strip()]
+
         highest_tier = TIER_NEUTRAL
         highest_reason = "Read-only SELECT / query."
 
         for stmt in statements:
-            tokens = stmt.split()
-            first_keyword = tokens[0] if tokens else ""
-
-            # Check Very Critical keywords
-            if any(stmt.startswith(kw) or f" {kw} " in f" {stmt} " for kw in ["DROP ", "TRUNCATE ", "ALTER "]):
+            # 1. Structural destructive DDL
+            if re.search(r"\b(DROP\s+(TABLE|VIEW|SCHEMA|DATABASE|EXTENSION|INDEX|FUNCTION|TRIGGER|ROLE|USER)|TRUNCATE\b|ALTER\s+(TABLE|SYSTEM|DATABASE|ROLE|SCHEMA))\b", stmt, re.IGNORECASE):
                 return TIER_VERY_CRITICAL, "Contains destructive structural DDL (DROP, TRUNCATE, or ALTER)."
 
-            if stmt.startswith("DELETE") or stmt.startswith("UPDATE"):
-                has_where = " WHERE " in f" {stmt} "
-                if not has_where:
-                    return TIER_VERY_CRITICAL, f"{first_keyword} statement without a WHERE clause will modify or delete ALL table rows!"
+            # 2. Anonymous procedural blocks (DO $$ ... $$)
+            if re.search(r"^\s*DO\b", stmt, re.IGNORECASE):
+                if re.search(r"\b(DROP|TRUNCATE)\b", raw_clean, re.IGNORECASE):
+                    return TIER_VERY_CRITICAL, "Anonymous DO procedural block executes destructive DDL."
+                elif re.search(r"\b(DELETE|UPDATE)\b", raw_clean, re.IGNORECASE):
+                    if not re.search(r"\bWHERE\b", raw_clean, re.IGNORECASE) or re.search(r"\bWHERE\s+(1\s*=\s*1|TRUE)\b", raw_clean, re.IGNORECASE):
+                        return TIER_VERY_CRITICAL, "Anonymous DO block executes DELETE or UPDATE without a WHERE clause!"
+                    return TIER_CRITICAL, "Anonymous DO procedural block modifies table records."
+                elif re.search(r"\b(INSERT|CREATE)\b", raw_clean, re.IGNORECASE):
+                    return TIER_CRITICAL, "Anonymous DO procedural block creates schema or inserts data."
+                else:
+                    return TIER_NORMAL, "Anonymous DO procedural execution."
+
+            # 3. DELETE statements (top-level or inside CTEs)
+            if re.search(r"\bDELETE\b", stmt, re.IGNORECASE):
+                has_where = bool(re.search(r"\bWHERE\b", stmt, re.IGNORECASE))
+                is_tautological = bool(re.search(r"\bWHERE\s+(1\s*=\s*1|TRUE)\s*(;|$)", stmt, re.IGNORECASE))
+                if not has_where or is_tautological:
+                    return TIER_VERY_CRITICAL, "DELETE statement without a WHERE clause will delete ALL table rows!"
                 else:
                     if TIER_RANKS[TIER_CRITICAL] > TIER_RANKS[highest_tier]:
                         highest_tier = TIER_CRITICAL
-                        highest_reason = f"{first_keyword} statement modifying table rows with a WHERE clause."
+                        highest_reason = "DELETE statement modifying table rows with a WHERE clause."
 
-            elif stmt.startswith("INSERT") or stmt.startswith("CREATE") or stmt.startswith("GRANT") or stmt.startswith("REVOKE"):
-                if TIER_RANKS[TIER_CRITICAL] > TIER_RANKS[highest_tier]:
-                    highest_tier = TIER_CRITICAL
-                    highest_reason = f"{first_keyword} operation that mutates data or database schema."
-
-            elif stmt.startswith("SELECT") or stmt.startswith("EXPLAIN") or stmt.startswith("SHOW") or stmt.startswith("DESCRIBE"):
-                # Check if it contains a destructive CTE, function, or subquery like DO, pg_sleep, etc.
-                if any(w in stmt for w in ["DELETE ", "UPDATE ", "DROP ", "INSERT "]):
+            # 4. UPDATE statements (top-level or inside CTEs)
+            elif re.search(r"\bUPDATE\b", stmt, re.IGNORECASE):
+                has_where = bool(re.search(r"\bWHERE\b", stmt, re.IGNORECASE))
+                is_tautological = bool(re.search(r"\bWHERE\s+(1\s*=\s*1|TRUE)\s*(;|$)", stmt, re.IGNORECASE))
+                if not has_where or is_tautological:
+                    return TIER_VERY_CRITICAL, "UPDATE statement without a WHERE clause will modify ALL table rows!"
+                else:
                     if TIER_RANKS[TIER_CRITICAL] > TIER_RANKS[highest_tier]:
                         highest_tier = TIER_CRITICAL
-                        highest_reason = "SELECT query contains data-modifying CTE or subqueries."
-                # Remains neutral unless something higher was found
+                        highest_reason = "UPDATE statement modifying table rows with a WHERE clause."
+
+            # 5. INSERT, CREATE, GRANT, REVOKE, or SELECT INTO
+            elif re.search(r"\b(INSERT\s+INTO|INSERT\b|CREATE\s+|GRANT\b|REVOKE\b)\b", stmt, re.IGNORECASE) or re.search(r"\bSELECT\s+.*?\bINTO\b\s+", stmt, re.IGNORECASE):
+                if TIER_RANKS[TIER_CRITICAL] > TIER_RANKS[highest_tier]:
+                    highest_tier = TIER_CRITICAL
+                    highest_reason = "Operation that mutates data or creates/modifies database schema or tables."
+
+            # 6. Read-only statements: SELECT, EXPLAIN, SHOW, DESCRIBE, WITH (read-only CTE)
+            elif re.search(r"^\s*(SELECT|EXPLAIN|SHOW|DESCRIBE|WITH)\b", stmt, re.IGNORECASE):
+                if re.search(r"\b(DELETE|UPDATE|DROP|INSERT)\b", stmt, re.IGNORECASE):
+                    if TIER_RANKS[TIER_CRITICAL] > TIER_RANKS[highest_tier]:
+                        highest_tier = TIER_CRITICAL
+                        highest_reason = "Query contains data-modifying CTE or subqueries."
             else:
                 if TIER_RANKS[TIER_NORMAL] > TIER_RANKS[highest_tier]:
+                    tokens = stmt.split()
+                    first_kw = tokens[0] if tokens else "Unknown"
                     highest_tier = TIER_NORMAL
-                    highest_reason = f"Database operation: {first_keyword}"
+                    highest_reason = f"Database operation: {first_kw}"
 
         return highest_tier, highest_reason
 
@@ -991,19 +1027,37 @@ class MapVisualizer:
 # SECTION 8: QUERY EXECUTOR & DATABASE RUNNER
 # ==============================================================================
 
+MAX_ROW_FETCH = 5000
+STATEMENT_TIMEOUT_MS = 30000  # 30 seconds safety timeout
+
 class QueryResult:
-    def __init__(self, rows: List[Dict[str, Any]], column_names: List[str], rowcount: int, execution_time_ms: float):
+    def __init__(
+        self,
+        rows: List[Dict[str, Any]],
+        column_names: List[str],
+        rowcount: int,
+        execution_time_ms: float,
+        is_truncated: bool = False
+    ):
         self.rows = rows
         self.column_names = column_names
         self.rowcount = rowcount
         self.execution_time_ms = execution_time_ms
+        self.is_truncated = is_truncated
 
 
 class DatabaseRunner:
     """Executes SQL queries against PostgreSQL and returns results."""
 
-    def __init__(self, connection_params: Dict[str, Any]):
+    def __init__(
+        self,
+        connection_params: Dict[str, Any],
+        statement_timeout_ms: int = STATEMENT_TIMEOUT_MS,
+        max_row_fetch: int = MAX_ROW_FETCH
+    ):
         self.params = connection_params
+        self.statement_timeout_ms = statement_timeout_ms
+        self.max_row_fetch = max_row_fetch
 
     def execute_query(self, sql_query: str) -> QueryResult:
         """Executes a query and returns structured results."""
@@ -1012,6 +1066,10 @@ class DatabaseRunner:
         
         start_time = time.time()
         with psycopg2.connect(**clean_params) as conn:
+            # Set statement timeout on connection to prevent runaway queries
+            with conn.cursor() as timeout_cur:
+                timeout_cur.execute(f"SET statement_timeout = {self.statement_timeout_ms};")
+
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(sql_query)
                 elapsed_ms = (time.time() - start_time) * 1000
@@ -1019,15 +1077,17 @@ class DatabaseRunner:
                 rows = []
                 col_names = []
                 rowcount = cur.rowcount
+                is_truncated = False
 
                 if cur.description:
                     col_names = [desc[0] for desc in cur.description]
-                    rows = cur.fetchall()
-                    # Convert to standard dicts
-                    rows = [dict(r) for r in rows]
+                    fetched = cur.fetchmany(self.max_row_fetch)
+                    rows = [dict(r) for r in fetched]
+                    if len(rows) == self.max_row_fetch and cur.fetchone():
+                        is_truncated = True
 
                 conn.commit()
-                return QueryResult(rows, col_names, rowcount, elapsed_ms)
+                return QueryResult(rows, col_names, rowcount, elapsed_ms, is_truncated=is_truncated)
 
 
 # ==============================================================================
@@ -1129,7 +1189,11 @@ class TerminalUI:
 
         console.print(table)
         if len(result.rows) > max_display:
-            console.print(f"[dim]Showing {max_display} of {len(result.rows)} rows.[/dim]\n")
+            console.print(f"[dim]Showing {max_display} of {len(result.rows)} rows.[/dim]")
+        
+        if result.is_truncated:
+            console.print(f"[bold yellow]⚠️ Query matched more rows than client safety cap ({len(result.rows):,}). Results capped to preserve memory.[/bold yellow]")
+            console.print("[dim yellow]Tip: Add a LIMIT clause or more specific WHERE conditions to refine.[/dim yellow]\n")
         else:
             console.print()
 
@@ -1192,6 +1256,7 @@ class Postmate:
         self.db_runner = DatabaseRunner(self.conn_params)
         self.memory = ConversationMemory(maxlen=5)
         self.cached_schema = ""
+        self.last_result: Optional[QueryResult] = None
 
     def initialize(self):
         """Discovers database schema on startup."""
@@ -1303,6 +1368,7 @@ class Postmate:
         # 4. Neutral / Normal: Runs immediately without pause
         try:
             result = self.db_runner.execute_query(sql_query)
+            self.last_result = result
             TerminalUI.print_results(result)
 
             # 5. Check if geometry exists and update map.html
@@ -1356,6 +1422,76 @@ class Postmate:
 
         except Exception as e:
             TerminalUI.print_error("Unexpected Error", str(e))
+            return False
+
+    def execute_sql_direct(self, raw_sql: str) -> bool:
+        """Executes raw SQL directly bypassing LLM generation, but still protected by the 4-tier safety engine."""
+        return self._handle_execution_with_retry(
+            original_question="[Direct SQL]",
+            sql_query=raw_sql.strip(),
+            grok_crit=TIER_NEUTRAL,
+            grok_risk="Direct SQL statement"
+        )
+
+    def export_results_csv(self, file_path: str) -> bool:
+        """Exports the last query result rows to a CSV file."""
+        if not self.last_result or not self.last_result.rows:
+            if console:
+                console.print("[yellow]ℹ No active query results available to export.[/yellow]\n")
+            else:
+                print("No active query results available to export.\n")
+            return False
+        import csv
+        try:
+            display_cols = [c for c in self.last_result.column_names if c not in ["__geojson__"]]
+            with open(file_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=display_cols, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(self.last_result.rows)
+            if console:
+                console.print(f"[green]✓ Exported {len(self.last_result.rows)} row(s) to CSV:[/green] [cyan]{os.path.abspath(file_path)}[/cyan]\n")
+            else:
+                print(f"Exported {len(self.last_result.rows)} row(s) to CSV: {os.path.abspath(file_path)}\n")
+            return True
+        except Exception as e:
+            TerminalUI.print_error("CSV Export Failed", str(e))
+            return False
+
+    def export_results_geojson(self, file_path: str) -> bool:
+        """Exports the last query result spatial features to a GeoJSON file."""
+        if not self.last_result or not self.last_result.rows:
+            if console:
+                console.print("[yellow]ℹ No active query results available to export.[/yellow]\n")
+            else:
+                print("No active query results available to export.\n")
+            return False
+        features = []
+        for r in self.last_result.rows:
+            geo_raw = r.get("__geojson__")
+            if geo_raw:
+                try:
+                    geom = json.loads(geo_raw) if isinstance(geo_raw, str) else geo_raw
+                    props = {k: v for k, v in r.items() if k != "__geojson__"}
+                    features.append({"type": "Feature", "geometry": geom, "properties": props})
+                except Exception:
+                    pass
+        if not features:
+            if console:
+                console.print("[yellow]ℹ Last query results do not contain spatial geometries (__geojson__).[/yellow]\n")
+            else:
+                print("Last query results do not contain spatial geometries (__geojson__).\n")
+            return False
+        try:
+            fc = {"type": "FeatureCollection", "features": features}
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(fc, f, indent=2)
+            if console:
+                console.print(f"[green]✓ Exported {len(features)} spatial feature(s) to GeoJSON:[/green] [cyan]{os.path.abspath(file_path)}[/cyan]\n")
+            else:
+                print(f"Exported {len(features)} spatial feature(s) to GeoJSON: {os.path.abspath(file_path)}\n")
+            return True
+        except Exception as e:
+            TerminalUI.print_error("GeoJSON Export Failed", str(e))
             return False
 
 
@@ -1433,21 +1569,49 @@ def run_repl(postmate: Postmate):
                     rprint(f"[green]✓ Import complete and schema reloaded![/green]\n")
                 continue
 
+            elif cmd_lower.startswith("export "):
+                parts = user_input.split()
+                if len(parts) >= 3:
+                    fmt = parts[1].lower()
+                    target_file = parts[2].strip('"').strip("'")
+                    if fmt == "csv":
+                        postmate.export_results_csv(target_file)
+                    elif fmt in ["geojson", "json"]:
+                        postmate.export_results_geojson(target_file)
+                    else:
+                        rprint(f"[yellow]Unsupported format '{fmt}'. Use 'export csv <file.csv>' or 'export geojson <file.geojson>'.[/yellow]\n")
+                else:
+                    rprint("[yellow]Usage: export csv <filename.csv> OR export geojson <filename.geojson>[/yellow]\n")
+                continue
+
             elif cmd_lower in ["help", "/help", "?"]:
                 help_msg = (
                     "Available Commands:\n"
-                    "  [cyan]<natural language question>[/cyan]  - Ask any database question (e.g. 'Calculate area of parcels')\n"
-                    "  [yellow]import <path>[/yellow]                  - Import a shapefile, geojson, csv, or folder directly\n"
-                    "  [yellow]clean[/yellow]                          - Wipe all user tables from the database\n"
-                    "  [yellow]schema[/yellow]                         - Show auto-discovered database & PostGIS tables\n"
-                    "  [yellow]reset[/yellow]                          - Clear rolling conversation memory\n"
-                    "  [yellow]history[/yellow]                        - Show current in-memory conversation context\n"
-                    "  [yellow]exit / quit[/yellow]                    - Exit Postmate\n"
+                    "  [cyan]<question>[/cyan]                     - Ask any question in plain English (e.g. 'Show hospitals near TMH')\n"
+                    "  [cyan]; <raw sql>[/cyan]                     - Execute SQL directly without calling LLM (e.g. ';SELECT 1;')\n"
+                    "  [yellow]export csv <file.csv>[/yellow]         - Export last query results to a CSV file\n"
+                    "  [yellow]export geojson <file.geojson>[/yellow] - Export last query spatial features to a GeoJSON file\n"
+                    "  [yellow]import <path>[/yellow]                 - Import a shapefile, geojson, gpkg, csv, or folder directly\n"
+                    "  [yellow]clean[/yellow]                         - Wipe all user tables from the database\n"
+                    "  [yellow]schema[/yellow]                        - Show auto-discovered database & PostGIS tables\n"
+                    "  [yellow]reset[/yellow]                         - Clear rolling conversation memory\n"
+                    "  [yellow]history[/yellow]                       - Show current in-memory conversation context\n"
+                    "  [yellow]exit / quit[/yellow]                   - Exit Postmate\n"
                 )
                 if console:
                     console.print(Panel(help_msg, title="Postmate Help", border_style="blue"))
                 else:
                     print(help_msg)
+                continue
+
+            # Direct SQL Execution Bypass:
+            # If line starts with ';' or begins with direct SQL statement keyword
+            is_direct_sql = user_input.startswith(";") or any(cmd_lower.startswith(prefix) for prefix in [
+                "select ", "with ", "explain ", "show ", "insert ", "update ", "delete ", "create ", "drop ", "truncate ", "alter "
+            ])
+            if is_direct_sql:
+                raw_sql = user_input[1:].strip() if user_input.startswith(";") else user_input.strip()
+                postmate.execute_sql_direct(raw_sql)
                 continue
 
             # Process natural language question

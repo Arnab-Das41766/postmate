@@ -116,18 +116,30 @@ def import_single_file(file_path: str, engine, database: str, custom_table: str 
                 gdf = gdf.to_crs(epsg=4326)
 
             num_rows = len(gdf)
+            geom_col = gdf.geometry.name or "geometry"
             geom_type = gdf.geometry.geom_type.iloc[0] if num_rows > 0 else "UNKNOWN"
-            print(f"   Loaded {num_rows} records (Type: {geom_type}, CRS: EPSG:4326)")
+            print(f"   Loaded {num_rows} records (Type: {geom_type}, CRS: EPSG:4326, Geom Column: '{geom_col}')")
+
+            # Validate and auto-repair self-intersecting geometries
+            try:
+                invalid_mask = ~gdf[geom_col].is_valid
+                if invalid_mask.any():
+                    invalid_count = int(invalid_mask.sum())
+                    print(f"   ⚠️ Found {invalid_count} invalid geometry(ies). Auto-repairing with make_valid()...")
+                    gdf[geom_col] = gdf[geom_col].make_valid()
+                    print(f"   ✓ Geometries successfully repaired.")
+            except Exception as val_err:
+                print(f"   ℹ️ Notice during geometry validation: {val_err}")
 
             print(f"   Uploading to PostGIS table '{tbl_name}' in '{database}'...")
             gdf.to_postgis(tbl_name, engine, if_exists=if_exists, index=False)
 
-            # Create GiST spatial index
+            # Create GiST spatial index dynamically on the actual geometry column
             with engine.connect() as conn:
-                conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{tbl_name}_geom" ON "{tbl_name}" USING GIST(geometry);'))
+                conn.execute(text(f'CREATE INDEX IF NOT EXISTS "idx_{tbl_name}_{geom_col}" ON "{tbl_name}" USING GIST("{geom_col}");'))
                 conn.commit()
 
-            print(f"   ✅ Table '{tbl_name}' created successfully with spatial GiST index.")
+            print(f"   ✅ Table '{tbl_name}' created successfully with spatial GiST index on '{geom_col}'.")
 
         return overall_success
 
