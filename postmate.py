@@ -354,6 +354,137 @@ class SchemaDiscovery:
         self.schema_summary = "\n".join(lines).strip()
         return self.schema_summary
 
+    def get_dataset_extent(self, table_name: Optional[str] = None) -> Dict[str, Any]:
+        """Calculates bounding box [min_lat, min_lon, max_lat, max_lon] and center across spatial tables."""
+        if not self.spatial_columns:
+            return {"bounds": None, "center": None, "tables": {}}
+
+        tables_to_check = [table_name] if table_name and table_name in self.spatial_columns else list(self.spatial_columns.keys())
+        global_min_lat, global_min_lon = None, None
+        global_max_lat, global_max_lon = None, None
+        table_bounds = {}
+
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cur:
+                for tbl in tables_to_check:
+                    cols = self.spatial_columns.get(tbl, [])
+                    if not cols:
+                        continue
+                    col = cols[0]["column"]
+                    try:
+                        cur.execute(f"""
+                            SELECT 
+                                ST_YMin(box)::float AS min_lat,
+                                ST_XMin(box)::float AS min_lon,
+                                ST_YMax(box)::float AS max_lat,
+                                ST_XMax(box)::float AS max_lon
+                            FROM (
+                                SELECT ST_Extent(ST_Transform({col}, 4326)) AS box FROM {tbl}
+                            ) sub;
+                        """)
+                        row = cur.fetchone()
+                        if row and row[0] is not None:
+                            t_min_lat, t_min_lon, t_max_lat, t_max_lon = row
+                            table_bounds[tbl] = [t_min_lat, t_min_lon, t_max_lat, t_max_lon]
+                            if global_min_lat is None or t_min_lat < global_min_lat: global_min_lat = t_min_lat
+                            if global_min_lon is None or t_min_lon < global_min_lon: global_min_lon = t_min_lon
+                            if global_max_lat is None or t_max_lat > global_max_lat: global_max_lat = t_max_lat
+                            if global_max_lon is None or t_max_lon > global_max_lon: global_max_lon = t_max_lon
+                    except Exception:
+                        conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+
+        bounds = [global_min_lat, global_min_lon, global_max_lat, global_max_lon] if global_min_lat is not None else None
+        center = [(global_min_lat + global_max_lat) / 2.0, (global_min_lon + global_max_lon) / 2.0] if bounds else None
+
+        return {
+            "bounds": bounds,
+            "center": center,
+            "tables": table_bounds
+        }
+
+    def generate_dynamic_suggestions(self) -> List[Dict[str, str]]:
+        """Generates dynamic, context-aware prompt suggestions based on discovered tables, geometry types, and attributes."""
+        if not self.spatial_columns:
+            return [
+                {"label": "📊 Table Summary", "query": "Show all tables and row counts"},
+                {"label": "🔍 Inspect Schema", "query": "Describe available columns and data types"}
+            ]
+
+        suggestions = []
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cur:
+                for tbl, cols in self.spatial_columns.items():
+                    if not cols:
+                        continue
+                    gcol = cols[0]["column"]
+                    gtype = cols[0].get("type", "GEOMETRY").upper()
+
+                    # Find categorical / descriptive columns
+                    cur.execute("""
+                        SELECT column_name, data_type 
+                        FROM information_schema.columns 
+                        WHERE table_name = %s 
+                          AND column_name NOT IN ('geometry', 'geom', 'wkb_geometry', '__geojson__')
+                        LIMIT 20;
+                    """, (tbl,))
+                    col_rows = cur.fetchall()
+                    col_names = [r[0] for r in col_rows]
+
+                    # 1. Distinct categories if found
+                    cat_cols = [c for c in col_names if c.lower() in ('amenity', 'type', 'category', 'highway', 'landuse', 'fclass', 'class', 'status', 'zone', 'use')]
+                    if cat_cols:
+                        cat_col = cat_cols[0]
+                        try:
+                            cur.execute(f"SELECT DISTINCT {cat_col} FROM {tbl} WHERE {cat_col} IS NOT NULL AND {cat_col} != '' LIMIT 3;")
+                            distinct_vals = [r[0] for r in cur.fetchall() if r[0]]
+                            for val in distinct_vals[:2]:
+                                val_str = str(val).strip()
+                                if val_str:
+                                    icon = "🏥" if "hosp" in val_str.lower() else "🎓" if "school" in val_str.lower() or "edu" in val_str.lower() else "🏷️"
+                                    suggestions.append({
+                                        "label": f"{icon} {val_str.capitalize()} in {tbl}",
+                                        "query": f"Show all {val_str} in {tbl}"
+                                    })
+                        except Exception:
+                            conn.rollback()
+
+                    # 2. Geometry type specific query
+                    if "POINT" in gtype:
+                        suggestions.append({
+                            "label": f"📍 Points in {tbl}",
+                            "query": f"Show 50 locations from {tbl}"
+                        })
+                    elif "LINE" in gtype:
+                        suggestions.append({
+                            "label": f"🛣️ Total Length of {tbl}",
+                            "query": f"Calculate the total length in kilometers of {tbl}"
+                        })
+                    elif "POLY" in gtype:
+                        suggestions.append({
+                            "label": f"🗺️ Largest in {tbl}",
+                            "query": f"Show the 10 largest features by area in {tbl}"
+                        })
+
+                # Universal spatial suggestions
+                if self.spatial_columns:
+                    first_tbl = list(self.spatial_columns.keys())[0]
+                    suggestions.append({
+                        "label": "🎯 Proximity Search",
+                        "query": f"Find features in {first_tbl} within 2km of center"
+                    })
+            conn.close()
+        except Exception:
+            pass
+
+        return suggestions[:10]
+
+
+
 
 # ==============================================================================
 # SECTION 4: CRITICALITY SYSTEM (4 Tiers & Precedence)
@@ -1584,11 +1715,23 @@ def run_repl(postmate: Postmate):
                     rprint("[yellow]Usage: export csv <filename.csv> OR export geojson <filename.geojson>[/yellow]\n")
                 continue
 
+            elif cmd_lower in ["web", "/web", "dashboard", "/dashboard"]:
+                import threading
+                from web_server import start_dashboard_server
+                if console:
+                    console.print("[bold cyan]🚀 Launching Postmate Web GIS Dashboard on http://localhost:8080...[/bold cyan]\n")
+                else:
+                    print("🚀 Launching Postmate Web GIS Dashboard on http://localhost:8080...\n")
+                t = threading.Thread(target=start_dashboard_server, args=(postmate, 8080, True), daemon=True)
+                t.start()
+                continue
+
             elif cmd_lower in ["help", "/help", "?"]:
                 help_msg = (
                     "Available Commands:\n"
                     "  [cyan]<question>[/cyan]                     - Ask any question in plain English (e.g. 'Show hospitals near TMH')\n"
                     "  [cyan]; <raw sql>[/cyan]                     - Execute SQL directly without calling LLM (e.g. ';SELECT 1;')\n"
+                    "  [yellow]web / dashboard[/yellow]               - Launch the interactive Web GIS Dashboard in your browser\n"
                     "  [yellow]export csv <file.csv>[/yellow]         - Export last query results to a CSV file\n"
                     "  [yellow]export geojson <file.geojson>[/yellow] - Export last query spatial features to a GeoJSON file\n"
                     "  [yellow]import <path>[/yellow]                 - Import a shapefile, geojson, gpkg, csv, or folder directly\n"
@@ -1643,6 +1786,17 @@ def main():
         help="Named database connection profile from config.json."
     )
     parser.add_argument(
+        "-w", "--web",
+        action="store_true",
+        help="Launch the interactive Web GIS Dashboard in your browser."
+    )
+    parser.add_argument(
+        "-p", "--port",
+        type=int,
+        default=8080,
+        help="Port for the Web GIS Dashboard (default: 8080)."
+    )
+    parser.add_argument(
         "--show-schema",
         action="store_true",
         help="Display auto-discovered schema and exit."
@@ -1669,6 +1823,11 @@ def main():
     except Exception as e:
         TerminalUI.print_error("Fatal Error", f"Unexpected error on startup: {e}")
         sys.exit(1)
+
+    if args.web:
+        from web_server import start_dashboard_server
+        start_dashboard_server(postmate, port=args.port)
+        sys.exit(0)
 
     if args.show_schema:
         if console:

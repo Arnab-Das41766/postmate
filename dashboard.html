@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Postmate | Spatial AI Command Dashboard</title>
+  
+  <!-- Modern Typography: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet & Leaflet.markercluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --panel-bg: rgba(15, 23, 42, 0.78);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --panel-blur: blur(16px);
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-glow: rgba(59, 130, 246, 0.35);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --badge-neutral: #10b981;
+      --badge-normal: #3b82f6;
+      --badge-critical: #f59e0b;
+      --badge-very-critical: #ef4444;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-main);
+    }
+
+    /* FULL SCREEN MAP */
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+    }
+
+    /* GLASSMORPHIC PANELS */
+    .glass-panel {
+      background: var(--panel-bg);
+      backdrop-filter: var(--panel-blur);
+      -webkit-backdrop-filter: var(--panel-blur);
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.45);
+      border-radius: var(--radius-lg);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* TOP COMMAND BAR */
+    .top-bar-container {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(880px, 92vw);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .search-card {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.3px;
+      color: #fff;
+      padding-right: 8px;
+      border-right: 1px solid var(--panel-border);
+      user-select: none;
+      cursor: pointer;
+    }
+
+    .brand-logo svg {
+      width: 22px;
+      height: 22px;
+      color: #60a5fa;
+    }
+
+    .search-input-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      padding: 6px 36px 6px 6px;
+    }
+
+    .search-input::placeholder {
+      color: #64748b;
+    }
+
+    .search-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-query {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 14px var(--accent-glow);
+      transition: all 0.2s ease;
+    }
+
+    .btn-query:hover {
+      background: linear-gradient(135deg, #1d4ed8, #1e40af);
+      transform: translateY(-1px);
+    }
+
+    .btn-query:active {
+      transform: translateY(0);
+    }
+
+    .btn-icon {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--panel-border);
+      color: #cbd5e1;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-icon:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+    }
+
+    /* QUICK PROMPT CHIPS */
+    .prompt-chips-row {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 4px 4px;
+      scrollbar-width: none;
+    }
+
+    .prompt-chips-row::-webkit-scrollbar {
+      display: none;
+    }
+
+    .chip {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--panel-border);
+      color: #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .chip:hover {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: #3b82f6;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    /* FLOATING AI QUERY INSPECTOR (LEFT SIDE) */
+    .ai-inspector-panel {
+      position: absolute;
+      top: 105px;
+      left: 18px;
+      width: 380px;
+      max-height: calc(100vh - 170px);
+      z-index: 1000;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .ai-inspector-panel.minimized {
+      transform: translateX(-420px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .inspector-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inspector-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-tier {
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-tier.neutral { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .badge-tier.normal { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+    .badge-tier.critical { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-tier.very-critical { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
+
+    .metrics-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11.5px;
+      color: #94a3b8;
+    }
+
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sql-code-box {
+      background: #0b1120;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      font-family: 'Fira Code', monospace;
+      font-size: 11.5px;
+      color: #e2e8f0;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      position: relative;
+    }
+
+    .btn-copy-sql {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #cbd5e1;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+
+    .btn-copy-sql:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+
+    .risk-notice {
+      background: rgba(245, 158, 11, 0.12);
+      border-left: 3px solid #f59e0b;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      color: #fde68a;
+    }
+
+    /* TOGGLE INSPECTOR BUTTON */
+    .btn-toggle-inspector {
+      position: absolute;
+      top: 105px;
+      left: 18px;
+      z-index: 999;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* BOTTOM DATA DRAWER */
+    .bottom-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      transform: translateY(calc(100% - 42px));
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .bottom-drawer.expanded {
+      transform: translateY(0);
+    }
+
+    .drawer-handle-bar {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .drawer-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .drawer-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-export {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--panel-border);
+      color: #cbd5e1;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .btn-export:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+      border-color: #3b82f6;
+    }
+
+    .drawer-body {
+      height: 260px;
+      overflow: auto;
+      padding: 12px 20px;
+      background: #080d1a;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      color: #e2e8f0;
+    }
+
+    .data-table th {
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #93c5fd;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+      z-index: 10;
+    }
+
+    .data-table td {
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      white-space: nowrap;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    /* MODALS */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-card {
+      width: min(520px, 90vw);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-desc {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    .modal-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--panel-border);
+      color: #cbd5e1;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .btn-danger {
+      background: #dc2626;
+      border: none;
+      color: #fff;
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* LOADING SPINNER */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* LEAFLET POPUP STYLES */
+    .leaflet-popup-content-wrapper {
+      background: rgba(15, 23, 42, 0.95) !important;
+      color: #fff !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      border-radius: 10px !important;
+      backdrop-filter: blur(10px) !important;
+    }
+    .leaflet-popup-tip {
+      background: rgba(15, 23, 42, 0.95) !important;
+    }
+    .leaflet-popup-content table {
+      font-size: 12px;
+      border-collapse: collapse;
+      width: 100%;
+    }
+    .leaflet-popup-content th {
+      color: #93c5fd;
+      padding: 3px 6px;
+      text-align: left;
+    }
+    /* SPATIAL TOOLBAR (LEFT) */
+    .spatial-tools-bar {
+      position: absolute;
+      top: 155px;
+      left: 18px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-tool {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      background: var(--panel-bg);
+      backdrop-filter: var(--panel-blur);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .btn-tool:hover {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: var(--primary);
+      color: #fff;
+      transform: translateY(-2px);
+    }
+
+    .btn-tool.active {
+      background: var(--primary);
+      border-color: #60a5fa;
+      color: #fff;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+    }
+
+    .btn-tool .tooltip-text {
+      visibility: hidden;
+      position: absolute;
+      left: 54px;
+      background: rgba(15, 23, 42, 0.95);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+
+    .btn-tool:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    /* VIEWPORT FILTER TOGGLE IN SEARCH BAR */
+    .btn-viewport-toggle {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+      margin-right: 6px;
+    }
+
+    .btn-viewport-toggle:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    .btn-viewport-toggle.active {
+      background: rgba(59, 130, 246, 0.25);
+      border-color: var(--primary);
+      color: #60a5fa;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    }
+
+    /* RADIUS TOOL HUD */
+    .radius-hud {
+      position: absolute;
+      top: 138px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1200;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid #3b82f6;
+      border-radius: 30px;
+      padding: 8px 18px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 16px rgba(59, 130, 246, 0.35);
+      font-size: 13px;
+      color: #fff;
+      animation: hudSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .radius-hud select {
+      background: #1e293b;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    /* MEASURE TOOL HUD */
+    .measure-hud {
+      position: absolute;
+      top: 138px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1200;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid #10b981;
+      border-radius: 30px;
+      padding: 8px 18px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 16px rgba(16, 185, 129, 0.35);
+      font-size: 13px;
+      color: #fff;
+      animation: hudSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes hudSlideDown {
+      from { opacity: 0; transform: translate(-50%, -8px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+
+    /* UPLOAD DROPZONE */
+    .upload-dropzone {
+      border: 2px dashed rgba(255,255,255,0.2);
+      border-radius: 12px;
+      padding: 30px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    /* LAYER CARDS */
+    .layer-item-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .layer-item-card:hover {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .badge-geom {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-geom.point { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-geom.line { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-geom.polygon { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+  </style>
+</head>
+<body>
+
+  <!-- FULLSCREEN LEAFLET MAP -->
+  <div id="map"></div>
+
+  <!-- FLOATING SPATIAL TOOLBOX (LEFT) -->
+  <div class="spatial-tools-bar">
+    <button class="btn-tool" onclick="fitToDatasetExtent()" title="Fit Dataset Extent">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8V5a2 2 0 012-2h3m11 0h3a2 2 0 012 2v3m0 8v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3" /></svg>
+      <span class="tooltip-text">Fit Dataset Extent</span>
+    </button>
+    <button id="btn-radius-tool" class="btn-tool" onclick="toggleRadiusTool()" title="Radial Buffer Search (ST_DWithin)">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 12l6 -4" /></svg>
+      <span class="tooltip-text">Radius Search (ST_DWithin)</span>
+    </button>
+    <button id="btn-measure-tool" class="btn-tool" onclick="toggleMeasureTool()" title="Measure Distance & Area">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19L19 4m-4 0h4v4M9 19H5v-4m5-5l2 2m2-6l2 2" /></svg>
+      <span class="tooltip-text">Measure Distance & Area</span>
+    </button>
+    <button class="btn-tool" onclick="openLayersModal()" title="Datasets & Tables Manager">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+      <span class="tooltip-text">Datasets & Tables</span>
+    </button>
+    <button class="btn-tool" onclick="openUploadModal()" title="Upload Shapefile / GeoJSON / CSV">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+      <span class="tooltip-text">Import GIS Dataset</span>
+    </button>
+  </div>
+
+  <!-- RADIUS SEARCH HUD -->
+  <div id="radius-hud" class="radius-hud">
+    <span>📍 Click map to search within:</span>
+    <select id="radius-distance-select">
+      <option value="500">500 meters</option>
+      <option value="1000" selected>1 kilometer</option>
+      <option value="2000">2 kilometers</option>
+      <option value="5000">5 kilometers</option>
+      <option value="10000">10 kilometers</option>
+    </select>
+    <button class="btn-secondary" style="padding: 4px 10px; font-size:12px;" onclick="toggleRadiusTool(false)">Exit</button>
+  </div>
+
+  <!-- MEASURE TOOL HUD -->
+  <div id="measure-hud" class="measure-hud">
+    <span>📐 Click to measure:</span>
+    <b id="measure-stats" style="color:#34d399;">0 m</b>
+    <button class="btn-secondary" style="padding: 4px 10px; font-size:12px;" onclick="clearMeasure()">Clear</button>
+    <button class="btn-secondary" style="padding: 4px 10px; font-size:12px;" onclick="toggleMeasureTool(false)">Done</button>
+  </div>
+
+  <!-- TOP COMMAND CENTER -->
+  <div class="top-bar-container">
+    <div class="search-card glass-panel">
+      <div class="brand-logo" onclick="openLayersModal()" title="Datasets & Layers">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg>
+        <span>Postmate</span>
+      </div>
+
+      <div class="search-input-wrapper">
+        <input 
+          type="text" 
+          id="query-input" 
+          class="search-input" 
+          placeholder="Ask anything in plain English or raw SQL..."
+          autofocus
+        />
+        <button id="btn-viewport-filter" class="btn-viewport-toggle" onclick="toggleViewportFilter()" title="Filter search to current screen viewport">
+          <span>🔲 Viewport</span>
+        </button>
+      </div>
+
+      <div class="search-actions">
+        <button id="btn-submit" class="btn-query" onclick="executeQuery()">
+          <span class="spinner" id="query-spinner"></span>
+          <span id="btn-text">Search</span>
+        </button>
+
+        <button class="btn-icon" title="Datasets & Tables" onclick="openLayersModal()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+        </button>
+
+        <button class="btn-icon" title="Import Dataset" onclick="openUploadModal()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+        </button>
+
+        <button class="btn-icon" title="Conversation History" onclick="openHistoryModal()">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </button>
+      </div>
+    </div>
+
+
+    <!-- DYNAMIC SCHEMA-DRIVEN PROMPT SUGGESTION CHIPS -->
+    <div id="prompt-chips-container" class="prompt-chips-row">
+      <div class="chip" onclick="applyPrompt('Show all records in spatial tables')">⚡ Discovering Schema Suggestions...</div>
+    </div>
+  </div>
+
+
+  <!-- FLOATING AI QUERY INSPECTOR PANEL -->
+  <button id="btn-show-inspector" class="btn-toggle-inspector glass-panel" onclick="toggleInspector(true)">
+    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+    Show Query Details
+  </button>
+
+  <div id="inspector-panel" class="ai-inspector-panel glass-panel">
+    <div class="inspector-header">
+      <div class="inspector-title">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+        Generated SQL
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span id="badge-tier" class="badge-tier neutral">NEUTRAL</span>
+        <button class="btn-icon" style="width:24px; height:24px;" onclick="toggleInspector(false)" title="Collapse">✕</button>
+      </div>
+    </div>
+
+    <div class="sql-code-box">
+      <button class="btn-copy-sql" onclick="copySql()">Copy</button>
+      <code id="sql-text">SELECT * FROM osm_points LIMIT 10;</code>
+    </div>
+
+    <div class="metrics-row">
+      <div class="metric-item">
+        <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <span id="metric-time">89 ms</span>
+      </div>
+      <div class="metric-item">
+        <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+        <span id="metric-rows">25 features</span>
+      </div>
+    </div>
+
+    <div id="risk-explanation-box" class="risk-notice" style="display: none;">
+      <span id="risk-text">Read-only SELECT query.</span>
+    </div>
+  </div>
+
+  <!-- BOTTOM RESULTS DRAWER -->
+  <div id="bottom-drawer" class="bottom-drawer glass-panel">
+    <div class="drawer-handle-bar" onclick="toggleDrawer()">
+      <div class="drawer-title">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+        <span id="drawer-title-text">Query Results Table (0 rows)</span>
+      </div>
+
+      <div class="drawer-actions" onclick="event.stopPropagation()">
+        <button class="btn-export" onclick="exportData('csv')">
+          <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+          Export CSV
+        </button>
+        <button class="btn-export" onclick="exportData('geojson')">
+          <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+          Export GeoJSON
+        </button>
+        <span style="font-size: 13px; color: #64748b; margin-left: 8px;">▲</span>
+      </div>
+    </div>
+
+    <div class="drawer-body">
+      <table class="data-table" id="data-table">
+        <thead id="table-head"></thead>
+        <tbody id="table-body">
+          <tr><td style="color:#64748b; text-align:center; padding: 40px 0;">No active query results. Type a question above or click a suggestion chip!</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CRITICALITY SAFETY MODAL -->
+  <div id="safety-modal" class="modal-overlay">
+    <div class="modal-card glass-panel" style="border-color: #ef4444;">
+      <div class="modal-title" style="color: #f87171;">
+        <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        <span id="modal-tier-title">Criticality Interception</span>
+      </div>
+      <div class="modal-desc" id="modal-risk-desc">
+        This operation can permanently alter or delete database records.
+      </div>
+      <div class="sql-code-box" style="max-height: 110px;">
+        <code id="modal-sql-preview"></code>
+      </div>
+      <div id="confirm-input-container" style="display: none;">
+        <label style="font-size: 12px; color: #f87171; display: block; margin-bottom: 6px;">
+          Type <b>CONFIRM</b> to authorize execution:
+        </label>
+        <input type="text" id="confirm-input" class="modal-input" placeholder="Type CONFIRM here..." />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeSafetyModal()">Cancel</button>
+        <button id="btn-modal-confirm" class="btn-danger" onclick="executeConfirmedQuery()">Authorize & Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCHEMA MODAL -->
+  <div id="schema-modal" class="modal-overlay" onclick="closeModal(event, 'schema-modal')">
+    <div class="modal-card glass-panel" style="width: min(680px, 92vw);" onclick="event.stopPropagation()">
+      <div class="modal-title">
+        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7M4 7c0-2 1.5-3 3.5-3h9c2 0 3.5 1 3.5 3M4 7h16" /></svg>
+        Live PostgreSQL & PostGIS Schema
+      </div>
+      <div class="sql-code-box" style="max-height: 380px;">
+        <code id="schema-content">Loading schema...</code>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="document.getElementById('schema-modal').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY MODAL -->
+  <div id="history-modal" class="modal-overlay" onclick="closeModal(event, 'history-modal')">
+    <div class="modal-card glass-panel" style="width: min(600px, 92vw);" onclick="event.stopPropagation()">
+      <div class="modal-title" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          Conversation History
+        </div>
+        <button class="btn-secondary" style="font-size: 11px; padding: 4px 10px;" onclick="resetHistory()">Clear</button>
+      </div>
+      <div id="history-list" style="max-height: 350px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+        <span style="color:#64748b; font-size:12px;">No recorded turns.</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="document.getElementById('history-modal').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYERS & DATASETS MODAL -->
+  <div id="layers-modal" class="modal-overlay" onclick="closeModal(event, 'layers-modal')">
+    <div class="modal-card glass-panel" style="width: min(720px, 94vw);" onclick="event.stopPropagation()">
+      <div class="modal-title" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+          Active Datasets & Spatial Tables
+        </div>
+        <button style="font-size: 11px; padding: 6px 14px; background: #3b82f6; border: none; border-radius: 6px; color: #fff; font-weight:600; cursor: pointer;" onclick="openUploadModal()">+ Import Dataset</button>
+      </div>
+      <div id="layers-list-container" style="max-height: 400px; overflow-y: auto; margin-top: 10px;">
+        <span style="color:#64748b; font-size:12px;">Loading layers...</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="document.getElementById('layers-modal').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD DATASET MODAL -->
+  <div id="upload-modal" class="modal-overlay" onclick="closeModal(event, 'upload-modal')">
+    <div class="modal-card glass-panel" style="width: min(580px, 92vw);" onclick="event.stopPropagation()">
+      <div class="modal-title">
+        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+        Import GIS Dataset (Shapefile / GeoJSON / CSV)
+      </div>
+      <div class="modal-desc">
+        Drag & drop a zipped Shapefile (<code>.zip</code>), GeoJSON (<code>.geojson</code>, <code>.json</code>), or CSV (with lat/lon) to load into PostGIS.
+      </div>
+      <div id="dropzone" class="upload-dropzone" onclick="document.getElementById('file-upload-input').click()">
+        <svg width="36" height="36" fill="none" stroke="#60a5fa" viewBox="0 0 24 24" style="margin-bottom: 8px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+        <div id="upload-file-label" style="font-weight: 500; font-size: 13px;">Click to select file or drag & drop here</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Supports: .zip (Shapefile), .geojson, .json, .csv</div>
+      </div>
+      <input type="file" id="file-upload-input" style="display:none;" accept=".zip,.geojson,.json,.csv" onchange="onFileSelected(this)" />
+      
+      <div style="margin-top: 14px;">
+        <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 4px;">PostGIS Table Name (optional):</label>
+        <input type="text" id="upload-table-name" class="modal-input" placeholder="e.g. my_parcels (defaults to filename)" />
+      </div>
+
+      <div id="upload-status" style="margin-top: 10px; font-size: 12px; display: none;"></div>
+
+      <div class="modal-actions" style="margin-top: 16px;">
+        <button class="btn-secondary" onclick="document.getElementById('upload-modal').style.display='none'">Cancel</button>
+        <button id="btn-do-upload" class="btn-primary" style="background:#3b82f6; border:none; padding:8px 18px; border-radius:6px; color:#fff; font-weight:600; cursor:pointer;" onclick="submitUpload()">Upload & Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DELETE LAYER CONFIRMATION MODAL -->
+  <div id="delete-layer-modal" class="modal-overlay">
+    <div class="modal-card glass-panel" style="border-color: #ef4444; width: min(500px, 92vw);">
+      <div class="modal-title" style="color: #f87171;">
+        <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        Delete Dataset / Table
+      </div>
+      <div class="modal-desc" id="delete-layer-desc">
+        Are you sure you want to delete this table? This will drop the table from PostgreSQL and cannot be undone.
+      </div>
+      <div style="margin: 12px 0;">
+        <label style="font-size: 12px; color: #f87171; display: block; margin-bottom: 6px;">
+          Type table name <b id="delete-expected-name"></b> to confirm:
+        </label>
+        <input type="text" id="delete-confirm-input" class="modal-input" placeholder="Type table name here..." />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="document.getElementById('delete-layer-modal').style.display='none'">Cancel</button>
+        <button class="btn-danger" onclick="confirmDeleteLayer()">Permanently Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet & Dependencies Scripts -->
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <script>
+    // -------------------------------------------------------------
+    // GLOBAL STATE & LEAFLET INITIALIZATION
+    // -------------------------------------------------------------
+    let map = null;
+    let featureLayer = null;
+    let clusterGroup = null;
+    let currentPendingQuery = null;
+
+    function initMap() {
+      // Default center around Jamshedpur coordinates
+      map = L.map('map', {
+        center: [22.8015, 86.1888],
+        zoom: 13,
+        zoomControl: false
+      });
+
+      // Position Zoom Control at bottom right
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      // BASEMAP DEFINITIONS
+      const googleStreets = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        attribution: '&copy; Google Maps'
+      });
+
+      const googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        attribution: '&copy; Google Maps'
+      });
+
+      const esriImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri'
+      });
+
+      const esriStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 17,
+        attribution: 'Tiles &copy; Esri'
+      });
+
+      const esriTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 18,
+        attribution: 'Tiles &copy; Esri'
+      });
+
+      const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+        attribution: '&copy; CARTO'
+      });
+
+      const cartoPositron = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+        attribution: '&copy; CARTO'
+      });
+
+      // Add default basemap
+      googleStreets.addTo(map);
+
+      const baseMaps = {
+        "🗺️ Google Maps (Streets)": googleStreets,
+        "🛰️ Google Maps (Satellite)": googleSatellite,
+        "🛰️ Satellite (Esri Imagery)": esriImagery,
+        "🏛️ Street Map (Esri)": esriStreet,
+        "🏔️ Topographic (Esri)": esriTopo,
+        "🌙 Dark Mode (CartoDB)": cartoDark,
+        "🗺️ Carto Positron (OSM)": cartoPositron
+      };
+
+      // Feature layer container & Cluster Group
+      featureLayer = L.geoJSON(null, {
+        style: function (feature) {
+          return {
+            fillColor: "#3b82f6",
+            color: "#1d4ed8",
+            weight: 2.5,
+            fillOpacity: 0.45
+          };
+        },
+        onEachFeature: function (feature, layer) {
+          if (feature.properties) {
+            let props = feature.properties;
+            let html = '<table>';
+            for (let k in props) {
+              if (props[k] !== null && props[k] !== undefined && !k.startsWith('__')) {
+                html += `<tr><th>${k}</th><td>${props[k]}</td></tr>`;
+              }
+            }
+            html += '</table>';
+            layer.bindPopup(html);
+            if (props.name) {
+              layer.bindTooltip(props.name, { sticky: true });
+            }
+          }
+        }
+      });
+
+      clusterGroup = L.markerClusterGroup({
+        chunkedLoading: true,
+        maxClusterRadius: 40
+      });
+
+      map.addLayer(clusterGroup);
+
+      const overlays = {
+        "📍 Query Features": featureLayer
+      };
+
+      L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(map);
+
+      // Map click handler for Radius and Measure interactive tools
+      map.on('click', function (e) {
+        if (radiusToolActive) {
+          handleRadiusMapClick(e);
+        } else if (measureToolActive) {
+          handleMeasureMapClick(e);
+        }
+      });
+
+      // Fetch initial data if available
+      fetchLastResult();
+
+      // Dynamically fit map to whatever spatial dataset is loaded in PostGIS
+      fitToDatasetExtent();
+
+      // Dynamically load schema-driven suggestions
+      loadDynamicSuggestions();
+    }
+
+    // -------------------------------------------------------------
+    // INTERACTIVE SPATIAL TOOLS STATE & HANDLERS
+    // -------------------------------------------------------------
+    let viewportFilterActive = false;
+    let radiusToolActive = false;
+    let measureToolActive = false;
+    let radiusCircle = null;
+    let measurePoints = [];
+    let measureLayer = null;
+    let currentTableToDelete = null;
+    let selectedUploadFile = null;
+
+    function toggleViewportFilter() {
+      viewportFilterActive = !viewportFilterActive;
+      const btn = document.getElementById('btn-viewport-filter');
+      if (viewportFilterActive) {
+        btn.classList.add('active');
+        btn.innerHTML = '<span>☑ Viewport (Active)</span>';
+      } else {
+        btn.classList.remove('active');
+        btn.innerHTML = '<span>🔲 Viewport</span>';
+      }
+    }
+
+    function toggleRadiusTool(forceState = null) {
+      radiusToolActive = forceState !== null ? forceState : !radiusToolActive;
+      const btn = document.getElementById('btn-radius-tool');
+      const hud = document.getElementById('radius-hud');
+      if (radiusToolActive) {
+        if (measureToolActive) toggleMeasureTool(false);
+        btn.classList.add('active');
+        hud.style.display = 'flex';
+        map.getContainer().style.cursor = 'crosshair';
+      } else {
+        btn.classList.remove('active');
+        hud.style.display = 'none';
+        map.getContainer().style.cursor = '';
+        if (radiusCircle) {
+          map.removeLayer(radiusCircle);
+          radiusCircle = null;
+        }
+      }
+    }
+
+    async function handleRadiusMapClick(e) {
+      if (!radiusToolActive) return;
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      const radius = parseFloat(document.getElementById('radius-distance-select').value) || 1000;
+
+      if (radiusCircle) map.removeLayer(radiusCircle);
+      radiusCircle = L.circle([lat, lng], {
+        radius: radius,
+        color: '#3b82f6',
+        fillColor: '#3b82f6',
+        fillOpacity: 0.15,
+        weight: 2
+      }).addTo(map);
+
+      setLoading(true);
+      try {
+        const res = await fetch('/api/spatial_tool', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'radius',
+            lat: lat,
+            lng: lng,
+            radius_meters: radius
+          })
+        });
+        const data = await res.json();
+        setLoading(false);
+        if (data.status === 'success') {
+          renderQueryResult(data);
+          toggleRadiusTool(false);
+        } else {
+          alert('Radius Search Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        setLoading(false);
+        alert('Radius tool failed: ' + err.message);
+      }
+    }
+
+    function toggleMeasureTool(forceState = null) {
+      measureToolActive = forceState !== null ? forceState : !measureToolActive;
+      const btn = document.getElementById('btn-measure-tool');
+      const hud = document.getElementById('measure-hud');
+      if (measureToolActive) {
+        if (radiusToolActive) toggleRadiusTool(false);
+        btn.classList.add('active');
+        hud.style.display = 'flex';
+        map.getContainer().style.cursor = 'crosshair';
+        if (!measureLayer) {
+          measureLayer = L.featureGroup().addTo(map);
+        }
+        if (measurePoints.length === 0) {
+          document.getElementById('measure-stats').textContent = 'Click map to place points';
+        }
+      } else {
+        btn.classList.remove('active');
+        hud.style.display = 'none';
+        map.getContainer().style.cursor = '';
+      }
+    }
+
+    function clearMeasure() {
+      measurePoints = [];
+      if (measureLayer) measureLayer.clearLayers();
+      document.getElementById('measure-stats').textContent = 'Click map to place points';
+    }
+
+
+    function handleMeasureMapClick(e) {
+      if (!measureToolActive) return;
+      measurePoints.push(e.latlng);
+
+      if (!measureLayer) measureLayer = L.featureGroup().addTo(map);
+      measureLayer.clearLayers();
+
+      measurePoints.forEach((pt) => {
+        L.circleMarker(pt, { radius: 5, color: '#10b981', fillColor: '#fff', fillOpacity: 1 }).addTo(measureLayer);
+      });
+
+      if (measurePoints.length > 1) {
+        L.polyline(measurePoints, { color: '#10b981', weight: 3, dashArray: '4, 4' }).addTo(measureLayer);
+        let totalMeters = 0;
+        for (let i = 0; i < measurePoints.length - 1; i++) {
+          totalMeters += measurePoints[i].distanceTo(measurePoints[i+1]);
+        }
+        let distText = totalMeters >= 1000 ? `${(totalMeters / 1000).toFixed(2)} km` : `${Math.round(totalMeters)} m`;
+
+        if (measurePoints.length >= 3) {
+          L.polygon(measurePoints, { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.15 }).addTo(measureLayer);
+          const areaM2 = computePolygonArea(measurePoints);
+          let areaText = areaM2 >= 1000000 ? `${(areaM2 / 1000000).toFixed(2)} km²` : `${(areaM2 / 10000).toFixed(2)} ha (${Math.round(areaM2).toLocaleString()} m²)`;
+          document.getElementById('measure-stats').textContent = `${distText} | Area: ${areaText}`;
+        } else {
+          document.getElementById('measure-stats').textContent = distText;
+        }
+      }
+    }
+
+    function computePolygonArea(pts) {
+      if (pts.length < 3) return 0;
+      let area = 0;
+      const d2r = Math.PI / 180;
+      for (let i = 0; i < pts.length; i++) {
+        let p1 = pts[i];
+        let p2 = pts[(i + 1) % pts.length];
+        area += (p2.lng - p1.lng) * d2r * (2 + Math.sin(p1.lat * d2r) + Math.sin(p2.lat * d2r));
+      }
+      return Math.abs(area * 6378137.0 * 6378137.0 / 2.0);
+    }
+
+    // -------------------------------------------------------------
+    // DATASET & LAYER MANAGER MODAL HANDLERS
+    // -------------------------------------------------------------
+    async function openLayersModal() {
+      const modal = document.getElementById('layers-modal');
+      modal.style.display = 'flex';
+      const container = document.getElementById('layers-list-container');
+      container.innerHTML = '<span style="color:#64748b; font-size:12px;">Loading layers...</span>';
+      try {
+        const res = await fetch('/api/layers');
+        const data = await res.json();
+        if (data.status === 'success' && data.layers) {
+          if (data.layers.length === 0) {
+            container.innerHTML = '<span style="color:#94a3b8; font-size:13px;">No spatial layers found in database.</span>';
+            return;
+          }
+          container.innerHTML = '';
+          data.layers.forEach(lyr => {
+            const card = document.createElement('div');
+            card.className = 'layer-item-card';
+            const gtype = (lyr.geometry_type || 'GEOMETRY').toUpperCase();
+            const badgeClass = gtype.includes('POINT') ? 'point' : gtype.includes('LINE') ? 'line' : 'polygon';
+            card.innerHTML = `
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <b style="color:#f8fafc; font-size:13px;">${lyr.table}</b>
+                  <span class="badge-geom ${badgeClass}">${lyr.geometry_type}</span>
+                </div>
+                <span style="color:#94a3b8; font-size:11px;">${(lyr.row_count || 0).toLocaleString()} records • SRID: ${lyr.srid} • Col: ${lyr.geometry_column}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button class="btn-secondary" style="font-size:11px; padding:4px 10px;" onclick="zoomToLayer('${lyr.table}')" title="Zoom to layer bounds">🔍 Zoom</button>
+                <button class="btn-secondary" style="font-size:11px; padding:4px 10px;" onclick="queryLayerAll('${lyr.table}')" title="Show features">👁️ View</button>
+                <button class="btn-danger" style="font-size:11px; padding:4px 8px;" onclick="promptDeleteLayer('${lyr.table}')" title="Drop table">🗑️</button>
+              </div>
+            `;
+            container.appendChild(card);
+          });
+        }
+      } catch (e) {
+        container.innerHTML = '<span style="color:#ef4444; font-size:12px;">Failed to load layers.</span>';
+      }
+    }
+
+    function zoomToLayer(tbl) {
+      fitToDatasetExtent(tbl);
+      document.getElementById('layers-modal').style.display = 'none';
+    }
+
+    function queryLayerAll(tbl) {
+      document.getElementById('layers-modal').style.display = 'none';
+      const q = `SELECT * FROM ${tbl} LIMIT 100;`;
+      applyPrompt(q);
+      executeQuery(q);
+    }
+
+    function promptDeleteLayer(tbl) {
+      currentTableToDelete = tbl;
+      document.getElementById('delete-expected-name').textContent = tbl;
+      document.getElementById('delete-confirm-input').value = '';
+      document.getElementById('delete-layer-modal').style.display = 'flex';
+    }
+
+    async function confirmDeleteLayer() {
+      const input = document.getElementById('delete-confirm-input').value.trim();
+      if (!currentTableToDelete || input !== currentTableToDelete) {
+        alert('Table name confirmation does not match!');
+        return;
+      }
+      try {
+        const res = await fetch('/api/layer/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ table: currentTableToDelete, confirm_name: input })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          document.getElementById('delete-layer-modal').style.display = 'none';
+          openLayersModal();
+          loadDynamicSuggestions();
+          fitToDatasetExtent();
+        } else {
+          alert('Delete failed: ' + data.message);
+        }
+      } catch (err) {
+        alert('Server error deleting table: ' + err.message);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // DATASET UPLOADER MODAL HANDLERS
+    // -------------------------------------------------------------
+    function openUploadModal() {
+      if (document.getElementById('layers-modal')) document.getElementById('layers-modal').style.display = 'none';
+      document.getElementById('upload-modal').style.display = 'flex';
+      document.getElementById('upload-status').style.display = 'none';
+      document.getElementById('upload-file-label').textContent = 'Click to select file or drag & drop here';
+      document.getElementById('file-upload-input').value = '';
+      document.getElementById('upload-table-name').value = '';
+      selectedUploadFile = null;
+    }
+
+    function onFileSelected(input) {
+      if (input.files && input.files[0]) {
+        selectedUploadFile = input.files[0];
+        document.getElementById('upload-file-label').innerHTML = `<b style="color:#38bdf8;">Selected:</b> ${selectedUploadFile.name} (${Math.round(selectedUploadFile.size/1024)} KB)`;
+        if (!document.getElementById('upload-table-name').value) {
+          const cleanName = selectedUploadFile.name.split('.')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+          document.getElementById('upload-table-name').value = cleanName;
+        }
+      }
+    }
+
+    async function submitUpload() {
+      if (!selectedUploadFile) {
+        alert('Please select a file (.zip, .geojson, or .csv) to upload!');
+        return;
+      }
+      const customTable = document.getElementById('upload-table-name').value.trim();
+      const statusBox = document.getElementById('upload-status');
+      statusBox.style.display = 'block';
+      statusBox.style.color = '#38bdf8';
+      statusBox.textContent = 'Reading and converting file...';
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        statusBox.textContent = 'Uploading and importing into PostGIS...';
+        try {
+          const base64Data = e.target.result;
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: selectedUploadFile.name,
+              file_data: base64Data,
+              table_name: customTable
+            })
+          });
+          const data = await res.json();
+          if (data.status === 'success') {
+            statusBox.style.color = '#34d399';
+            statusBox.textContent = `✓ ${data.message}`;
+            setTimeout(() => {
+              document.getElementById('upload-modal').style.display = 'none';
+              loadDynamicSuggestions();
+              if (data.table) zoomToLayer(data.table);
+            }, 1200);
+          } else {
+            statusBox.style.color = '#ef4444';
+            statusBox.textContent = `Error: ${data.message}`;
+          }
+        } catch (err) {
+          statusBox.style.color = '#ef4444';
+          statusBox.textContent = `Upload error: ${err.message}`;
+        }
+      };
+      reader.readAsDataURL(selectedUploadFile);
+    }
+
+    async function fitToDatasetExtent(tableName = null) {
+      try {
+        const url = tableName ? `/api/extent?table=${encodeURIComponent(tableName)}` : '/api/extent';
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === 'success' && data.extent && data.extent.bounds) {
+          const b = data.extent.bounds;
+          map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: [50, 50], maxZoom: 15 });
+          return true;
+        }
+      } catch (err) {
+        console.warn('Dataset extent auto-fit warning:', err);
+      }
+      return false;
+    }
+
+    async function loadDynamicSuggestions() {
+      const container = document.getElementById('prompt-chips-container');
+      if (!container) return;
+      try {
+        const res = await fetch('/api/suggestions');
+        const data = await res.json();
+        if (data.status === 'success' && data.suggestions && data.suggestions.length > 0) {
+          container.innerHTML = '';
+          data.suggestions.forEach(item => {
+            const chip = document.createElement('div');
+            chip.className = 'chip';
+            chip.textContent = item.label;
+            chip.title = item.query;
+            chip.onclick = () => {
+              applyPrompt(item.query);
+              executeQuery(item.query);
+            };
+            container.appendChild(chip);
+          });
+        }
+      } catch (err) {
+        console.warn('Dynamic suggestions fetch error:', err);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // QUERY EXECUTION & API CALLS
+    // -------------------------------------------------------------
+    async function executeQuery(overrideQuestion = null, confirmed = false) {
+      const input = document.getElementById('query-input');
+      const question = overrideQuestion || input.value.trim();
+      if (!question) return;
+
+      setLoading(true);
+      try {
+        const reqPayload = {
+          question: question,
+          confirmed: confirmed
+        };
+        if (viewportFilterActive && map) {
+          const b = map.getBounds();
+          reqPayload.viewport_bounds = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()];
+        }
+
+        const response = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqPayload)
+        });
+
+
+        const data = await response.json();
+        setLoading(false);
+
+        if (data.status === 'confirmation_required') {
+          promptSafetyConfirmation(data);
+          return;
+        }
+
+        if (data.status === 'error') {
+          alert('Query Error: ' + data.message);
+          return;
+        }
+
+        // Render Results
+        renderQueryResult(data);
+
+      } catch (err) {
+        setLoading(false);
+        alert('Server Connection Error: ' + err.message);
+      }
+    }
+
+    function renderQueryResult(data) {
+      // 1. Update AI Inspector
+      document.getElementById('sql-text').textContent = data.sql || '-- No SQL';
+      document.getElementById('metric-time').textContent = (data.execution_time_ms || 0) + ' ms';
+      document.getElementById('metric-rows').textContent = (data.row_count || 0) + ' feature(s)';
+
+      const badge = document.getElementById('badge-tier');
+      badge.textContent = (data.tier || 'NEUTRAL').toUpperCase();
+      badge.className = 'badge-tier ' + (data.tier || 'neutral').toLowerCase().replace(' ', '-');
+
+      const riskBox = document.getElementById('risk-explanation-box');
+      if (data.risk_explanation && (data.tier === 'critical' || data.tier === 'very critical')) {
+        riskBox.style.display = 'block';
+        document.getElementById('risk-text').textContent = data.risk_explanation;
+      } else {
+        riskBox.style.display = 'none';
+      }
+
+      toggleInspector(true);
+
+      // 2. Render Spatial Features on Map
+      clusterGroup.clearLayers();
+      featureLayer.clearLayers();
+
+      if (data.geojson && data.geojson.features && data.geojson.features.length > 0) {
+        featureLayer.addData(data.geojson);
+        clusterGroup.addLayer(featureLayer);
+
+        if (data.bounds) {
+          // Leaflet bounds are [[min_lat, min_lon], [max_lat, max_lon]]
+          map.fitBounds([
+            [data.bounds[0], data.bounds[1]],
+            [data.bounds[2], data.bounds[3]]
+          ], { maxZoom: 16, padding: [60, 60] });
+        }
+      }
+
+      // 3. Render Table
+      renderTable(data.columns, data.rows);
+    }
+
+    function renderTable(columns, rows) {
+      const thead = document.getElementById('table-head');
+      const tbody = document.getElementById('table-body');
+      const title = document.getElementById('drawer-title-text');
+
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      if (!columns || columns.length === 0 || !rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td style="color:#64748b; text-align:center; padding: 40px 0;">Query executed successfully. 0 rows returned.</td></tr>';
+        title.textContent = 'Query Results Table (0 rows)';
+        return;
+      }
+
+      title.textContent = `Query Results Table (${rows.length} rows)`;
+
+      // Headers
+      let headerTr = document.createElement('tr');
+      columns.forEach(col => {
+        let th = document.createElement('th');
+        th.textContent = col;
+        headerTr.appendChild(th);
+      });
+      thead.appendChild(headerTr);
+
+      // Rows
+      rows.forEach(r => {
+        let tr = document.createElement('tr');
+        columns.forEach(col => {
+          let td = document.createElement('td');
+          td.textContent = r[col] !== null ? r[col] : 'NULL';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function fetchLastResult() {
+      try {
+        const res = await fetch('/api/last_result');
+        const data = await res.json();
+        if (data.status === 'success') {
+          renderQueryResult(data);
+        }
+      } catch (e) {}
+    }
+
+    // -------------------------------------------------------------
+    // SAFETY CONFIRMATION MODAL LOGIC
+    // -------------------------------------------------------------
+    function promptSafetyConfirmation(data) {
+      currentPendingQuery = data;
+      const modal = document.getElementById('safety-modal');
+      const tierTitle = document.getElementById('modal-tier-title');
+      const riskDesc = document.getElementById('modal-risk-desc');
+      const sqlPreview = document.getElementById('modal-sql-preview');
+      const confirmContainer = document.getElementById('confirm-input-container');
+      const confirmInput = document.getElementById('confirm-input');
+
+      tierTitle.textContent = (data.tier === 'very critical' ? 'VERY CRITICAL' : 'CRITICAL') + ' SAFETY INTERCEPTION';
+      riskDesc.textContent = data.risk_explanation || 'This operation will modify or delete data.';
+      sqlPreview.textContent = data.sql;
+      confirmInput.value = '';
+
+      if (data.tier === 'very critical') {
+        confirmContainer.style.display = 'block';
+      } else {
+        confirmContainer.style.display = 'none';
+      }
+
+      modal.style.display = 'flex';
+    }
+
+    function closeSafetyModal() {
+      document.getElementById('safety-modal').style.display = 'none';
+      currentPendingQuery = null;
+    }
+
+    function executeConfirmedQuery() {
+      if (!currentPendingQuery) return;
+      if (currentPendingQuery.tier === 'very critical') {
+        const val = document.getElementById('confirm-input').value.trim();
+        if (val !== 'CONFIRM') {
+          alert('You must type CONFIRM in capital letters to authorize execution.');
+          return;
+        }
+      }
+
+      const q = currentPendingQuery.question;
+      closeSafetyModal();
+      executeQuery(q, true);
+    }
+
+    // -------------------------------------------------------------
+    // EXPORT & TOOLS
+    // -------------------------------------------------------------
+    async function exportData(format) {
+      try {
+        const res = await fetch('/api/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ format: format })
+        });
+        if (!res.ok) {
+          alert('No query data available to export.');
+          return;
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = format === 'csv' ? 'postmate_results.csv' : 'postmate_features.geojson';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (err) {
+        alert('Export failed: ' + err.message);
+      }
+    }
+
+    function applyPrompt(text) {
+      const input = document.getElementById('query-input');
+      input.value = text;
+      executeQuery(text);
+    }
+
+    function toggleDrawer() {
+      const drawer = document.getElementById('bottom-drawer');
+      drawer.classList.toggle('expanded');
+    }
+
+    function toggleInspector(show) {
+      const p = document.getElementById('inspector-panel');
+      const b = document.getElementById('btn-show-inspector');
+      if (show) {
+        p.classList.remove('minimized');
+        b.style.display = 'none';
+      } else {
+        p.classList.add('minimized');
+        b.style.display = 'flex';
+      }
+    }
+
+    function copySql() {
+      const sql = document.getElementById('sql-text').textContent;
+      navigator.clipboard.writeText(sql).then(() => {
+        alert('SQL copied to clipboard!');
+      });
+    }
+
+    function setLoading(isLoading) {
+      const btn = document.getElementById('btn-submit');
+      const spinner = document.getElementById('query-spinner');
+      const text = document.getElementById('btn-text');
+      if (isLoading) {
+        spinner.style.display = 'inline-block';
+        text.textContent = 'Thinking...';
+        btn.disabled = true;
+      } else {
+        spinner.style.display = 'none';
+        text.textContent = 'Search';
+        btn.disabled = false;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // SCHEMA & HISTORY MODALS
+    // -------------------------------------------------------------
+    async function openSchemaModal() {
+      const modal = document.getElementById('schema-modal');
+      const content = document.getElementById('schema-content');
+      modal.style.display = 'flex';
+      content.textContent = 'Loading database schema...';
+      try {
+        const res = await fetch('/api/schema');
+        const data = await res.json();
+        content.textContent = data.schema || 'No schema discovered.';
+      } catch (e) {
+        content.textContent = 'Failed to load schema.';
+      }
+    }
+
+    async function openHistoryModal() {
+      const modal = document.getElementById('history-modal');
+      const list = document.getElementById('history-list');
+      modal.style.display = 'flex';
+      list.innerHTML = '<span style="color:#64748b; font-size:12px;">Loading history...</span>';
+      try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+        list.innerHTML = '';
+        if (!data.history || data.history.length === 0) {
+          list.innerHTML = '<span style="color:#64748b; font-size:12px;">No recorded turns.</span>';
+          return;
+        }
+        data.history.forEach((h, idx) => {
+          let card = document.createElement('div');
+          card.style.cssText = 'background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.08);';
+          card.innerHTML = `<b style="color:#60a5fa; font-size:12px;">Q: ${h.question}</b><div style="color:#94a3b8; font-size:11px; margin-top:4px; font-family:monospace;">${h.sql}</div>`;
+          card.onclick = () => {
+            applyPrompt(h.question);
+            modal.style.display = 'none';
+          };
+          list.appendChild(card);
+        });
+      } catch (e) {
+        list.innerHTML = '<span style="color:#ef4444; font-size:12px;">Failed to load history.</span>';
+      }
+    }
+
+    async function resetHistory() {
+      await fetch('/api/reset', { method: 'POST' });
+      openHistoryModal();
+    }
+
+    function closeModal(event, id) {
+      if (event.target.id === id) {
+        document.getElementById(id).style.display = 'none';
+      }
+    }
+
+    // Enter key submits query
+    document.getElementById('query-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        executeQuery();
+      }
+    });
+
+    // Escape key dismisses modals and deactivates tools
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+        if (radiusToolActive) toggleRadiusTool(false);
+        if (measureToolActive) toggleMeasureTool(false);
+      }
+    });
+
+
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', initMap);
+  </script>
+</body>
+</html>

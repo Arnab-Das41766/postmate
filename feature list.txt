@@ -1,0 +1,27 @@
+1. Dynamic Auto-Discovery of Map Extent & Coordinates
+Current Issue: Initial view is locked to Jamshedpur [22.8015, 86.1888].
+Dynamic Solution: On startup/page load, Postmate queries PostGIS:
+sql
+SELECT ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_Extent(geometry), 4326), 4326)) 
+FROM <active_spatial_table>;
+The dashboard automatically reads the real bounding box of whatever dataset is loaded and executes map.fitBounds(...). Whether your shapefile is in California, Germany, or Mumbai, the camera instantly centers on your data.
+2. Schema-Driven, Context-Aware Dynamic Prompt Suggestions
+Current Issue: Static chips hardcoded in HTML.
+Dynamic Solution: A new backend endpoint (/api/suggestions) inspects the actual database schema:
+Identifies Geometry Types: Points, LineStrings, Polygons, MultiPolygons across all loaded tables.
+Samples Categorical Columns: Queries DISTINCT values on descriptive columns (e.g., type, category, status, amenity, class, landuse).
+Generates Adaptive Query Chips:
+If it detects Parcels / Polygons: "Show 10 largest parcels", "Calculate total area by zone", "Find overlapping polygons".
+If it detects Roads / Lines: "Longest routes", "Total length of network", "Filter by road classification".
+If it detects Points: "Density heatmap", "Cluster points by category", "Find nearest points".
+Also includes generic universal PostGIS capabilities: "Summarize table stats", "Find features in visible viewport".
+3. Universal Interactive Map Tools (No SQL or Dataset Knowledge Needed)
+Instead of typing queries, give users interactive spatial tools that work on any dataset:
+
+📍 "Click & Radius Search" (Radial Buffer): Click anywhere on the map, choose a radius (e.g., 500m, 2km, 10km), and Postmate automatically runs ST_DWithin on the loaded dataset to find everything near that spot.
+📐 Spatial Measure Tool (Distance & Area): Draw a line or polygon directly on the map to measure real-world distances (meters/km) and land area (sq km/hectares).
+🔲 "Search Visible Map Area" (Viewport Filter): A toggle that automatically adds ST_Intersects(geometry, ST_MakeEnvelope(...)) using Leaflet's current screen bounds, letting you zoom into any neighborhood and ask questions scoped only to what you see.
+📚 Live Table & Layer Switcher: A panel showing all available tables in PostgreSQL with row counts and geometry badges (Point / Line / Polygon), letting you toggle or filter active tables.
+4. In-Dashboard Dataset Upload (Shapefile / GeoJSON / CSV)
+Current Workflow: Running import_gis_data.py manually via CLI.
+Dynamic Solution: Add an "📁 Import Dataset" button on the dashboard navbar. Drag and drop any .zip (shapefile), .geojson, or .csv (with lat/lon). Postmate imports it directly into PostGIS, updates the schema in memory, fits the map to the new bounds, and generates new dynamic suggestions automatically.

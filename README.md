@@ -137,8 +137,26 @@ Postmate includes a universal batch importer:
 
 ## 💻 Usage
 
-### Interactive REPL Mode (Default)
-Start Postmate:
+### Interactive Web GIS Dashboard Mode 🌐 (New!)
+Launch the visual interactive map dashboard directly in your browser:
+```bash
+python postmate.py --web
+```
+*Or specify a custom port:*
+```bash
+python postmate.py --web --port 8080
+```
+**Dashboard Features:**
+- 🔍 **Live NLP Search Bar**: Query PostGIS in plain English right from the map header.
+- ⚡ **Instant Map Visualization**: Features render live on Google Maps & Esri basemaps with automatic bounding.
+- 🛡️ **Interactive Safety Modals**: Visual confirmation prompts for `critical` (yes/no) and `very critical` (typing `CONFIRM`) queries.
+- 📋 **Integrated Data Drawer**: Toggle the bottom drawer to view tabular data, and export with 1-click (`Export GeoJSON` or `Export CSV`).
+- 💡 **Quick Prompt Chips**: 1-click presets for hospitals, schools, airports, lakes, and roads.
+
+---
+
+### Interactive REPL Mode (Terminal)
+Start Postmate in terminal mode:
 ```bash
 python postmate.py
 ```
@@ -146,27 +164,24 @@ python postmate.py
 Inside the session:
 ```text
 postmate> Show all hospitals in osm_points
-postmate> Highlight dbms school
 postmate> Which schools are within 2km of Tata Main Hospital?
-postmate> Show all lakes and water bodies in osm_multipolygons
-postmate> Calculate the total length in kilometers of primary roads
-```
-
-### Multi-turn Conversational Memory
-Postmate remembers recent context without you having to retype queries:
-```text
-postmate> Find all schools in osm_points
-postmate> now only show the ones with High School in the name
-postmate> order them by name ascending
+postmate> ; SELECT count(*) FROM osm_points;            # Direct SQL execution bypass!
+postmate> export csv hospitals.csv                      # Export active results to CSV!
+postmate> export geojson hospitals.geojson              # Export active results to GeoJSON!
+postmate> web                                           # Launch browser dashboard!
 ```
 
 ### Built-in Session Commands
-- **`help`**: View available commands.
+- **`web` / `dashboard`**: Launch the interactive Web GIS Dashboard in your browser.
+- **`export csv <file.csv>`**: Save active query results to CSV.
+- **`export geojson <file.geojson>`**: Save active spatial features to GeoJSON.
+- **`; <raw sql>`**: Execute SQL directly without invoking AI.
 - **`schema`**: Show live auto-discovered tables, columns, geometry types, and SRIDs.
 - **`history`**: View current in-memory conversation context.
 - **`reset`**: Clear rolling conversational memory.
 - **`clean`**: Drop all user tables from the database.
 - **`import <path>`**: Import a spatial file or directory on the fly.
+- **`help`**: View available commands.
 - **`exit`** / **`quit`**: Exit Postmate.
 
 ### One-Off Command Mode
@@ -174,6 +189,27 @@ Execute a single question directly from your terminal:
 ```bash
 python postmate.py "Calculate the area of jamshedpur_boundary in square kilometers"
 ```
+
+---
+
+## 🚀 Live Interactive Web GIS Workstation (`--web`)
+
+Postmate includes an interactive browser-based GIS workstation powered by Leaflet, PostGIS, and Groq:
+
+```bash
+python postmate.py --web
+# Or inside the terminal REPL:
+postmate> web
+```
+
+### Dynamic Capabilities:
+1. **Dynamic Extent Auto-Discovery:** No hardcoded map centers! Postmate queries PostGIS for the bounding box of whatever spatial data is loaded and automatically centers the map view.
+2. **Schema-Driven Dynamic Prompt Chips:** Analyzes geometry types (Point/Line/Polygon) and samples distinct categories to generate context-aware suggestions for whatever shapefiles are loaded.
+3. **📍 Radial Buffer Search (ST_DWithin):** Click the radius tool on the left toolbar, pick a distance (500m to 10km), and click anywhere on the map to find and inspect all nearby features.
+4. **📐 Spatial Measure Tool:** Click on the map to measure linear distances (meters/km) and polygon surface area (sq km/hectares) in real time.
+5. **🔲 Viewport Filter:** Toggle `[🔲 Viewport]` in the search bar to restrict any query to what is visible on your screen using `ST_MakeEnvelope`.
+6. **📚 Dataset & Table Manager:** View all spatial tables, geometry types, and record counts. Zoom to any layer's extent or permanently delete tables with 2-tier safety confirmation.
+7. **📁 In-Dashboard Dataset Uploader:** Drag & drop Shapefiles (`.zip`), GeoJSON (`.geojson`), or CSVs directly into the UI to load them into PostGIS and auto-refresh the schema.
 
 ---
 
@@ -190,6 +226,7 @@ Whenever a query retrieves spatial geometries or coordinates:
    - 🏔️ **Topographic (Esri)**
    - 🔘 **Toggle Query Features** overlay on/off
 4. **Auto-sync & Live Reload:** Check the **`[x] Auto-sync (2s)`** checkbox in the top-left toolbar to have the map automatically reload as you query in the terminal without clicking refresh!
+
 
 ---
 
